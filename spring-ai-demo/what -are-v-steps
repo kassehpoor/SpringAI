@@ -1,0 +1,67 @@
+
+v1
+impl ollama
+---------------------------------
+v2
+chatMemory
+
+
+
+ChatClient
+   ↓
+MessageChatMemoryAdvisor
+   ↓
+ChatMemory
+   ↓
+ChatMemoryRepository
+   ↓
+conversationId
+   ↓
+retrieve previous messages
+   ↓
+add them to current interaction
+   ↓
+LLM
+   ↓
+store conversation messages
+---------------------------------
+V3
+Structured Output
+---------------------------------
+V4
+PDF
+---------------------------------
+V5
+Embedding
+---------------------------------
+V6
+Vector DB
+---------------------------------
+V7
+RAG
+
+                       User
+                         │
+                         ▼
+                    ChatClient
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+        Chat Memory               RAG
+              │                     │
+              │                Vector Store
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                       LLM
+---------------------------------
+V8
+Tool Calling
+---------------------------------
+V9
+Agent
+---------------------------------
+V10
+Multi Agent
+---------------------------------

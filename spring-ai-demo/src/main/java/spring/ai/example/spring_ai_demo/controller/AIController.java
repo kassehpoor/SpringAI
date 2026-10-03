@@ -6,14 +6,74 @@ import spring.ai.example.spring_ai_demo.dto.AIRequestDTO;
 import spring.ai.example.spring_ai_demo.dto.AIResponseDTO;
 import spring.ai.example.spring_ai_demo.service.AIService;
 
+
+/**
+ * @author Tahereh Kasehpoor
+ */
+
+
+
+
+
 /**
  * http://localhost:9999/swagger-ui/index.html
  */
 
 
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/ai")
+public class AIController {
+
+    private final AIService aiService;
+
+    @PostMapping("/chat")
+    public AIResponseDTO chat(
+            @RequestBody AIRequestDTO request
+    ) {
+
+        return aiService.ask(request);
+    }
+}
+
+
 /**
- * @author Tahereh Kasehpoor
+ *
+ *                  conversationId
+ *                        │
+ *                        ▼
+ *                   ┌─────────┐
+ *                   │ Memory  │
+ *                   └────┬────┘
+ *                        │
+ *                  previous messages
+ *                        │
+ *                        ▼
+ * User ────────> ChatClient
+ *                    │
+ *                    ▼
+ *               Memory Advisor
+ *                    │
+ *                    ▼
+ *              Previous Context
+ *                    +
+ *              Current Question
+ *                    │
+ *                    ▼
+ *                  Ollama
+ *                    │
+ *                    ▼
+ *                 llama3.2
+ *                    │
+ *                    ▼
+ *                 Answer
+ *                    │
+ *                    ▼
+ *                 Memory
+ *
+ *
  */
+
 
 /**
  *
@@ -59,26 +119,6 @@ import spring.ai.example.spring_ai_demo.service.AIService;
  * Memory = empty
  *
  */
-
-// http://localhost:8080/ask?conversationId=test-1&question=My%20name%20is%20Tahereh
-
-@RestController
-@RequiredArgsConstructor
-@RequestMapping("/api/v1/ai")
-public class AIController {
-
-    private final AIService aiService;
-
-    @PostMapping("/chat")
-    public AIResponseDTO chat(
-            @RequestBody AIRequestDTO request
-    ) {
-
-        return aiService.ask(request);
-    }
-}
-
-
 /**
  *
  *

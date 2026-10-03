@@ -10,6 +10,7 @@ Conversation Memory
 
        ↓
 
+V3
 Structured Output
 DTO ← LLM
 

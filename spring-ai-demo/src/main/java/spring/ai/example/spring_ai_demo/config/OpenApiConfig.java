@@ -17,7 +17,7 @@ public class OpenApiConfig {
     public OpenAPI springAiOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Spring AI Demo API")
+                        .title("Spring AI Demo API @author Tahereh Kasehpoor ")
                         .description("API documentation for Spring AI Demo")
                         .version("v1.0.0"));
     }
