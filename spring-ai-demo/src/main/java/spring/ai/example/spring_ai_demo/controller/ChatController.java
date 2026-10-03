@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 
 // http://localhost:8080/ask?question=Hello
+
 @RestController
 @RequiredArgsConstructor
 public class ChatController {
