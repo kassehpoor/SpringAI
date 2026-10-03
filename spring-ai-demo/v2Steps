@@ -1,0 +1,2797 @@
+حتماً. این مرحله را طوری می‌نویسم که بتوانی **از روی همین متن جلو بروی، کد بزنی، تست کنی و در پایان با یک چک‌لیست V2 را ببندی**.
+
+یک نکته مهم را از ابتدا روشن کنیم: پروژه فعلی تو با **Spring Boot 3.5.6 + Spring AI 1.0.1 + Ollama + llama3.2** است. بنابراین کد را بر اساس همین معماری می‌نویسیم، نه نمونه‌های قدیمی Spring AI.
+
+طبق فایل مسیر آموزشی خودت، بعد از V1 نوبت V2 یعنی Conversation Memory است و V3 بعد از آن Structured Output خواهد بود.
+
+---
+
+# V2 — Conversation Memory با Spring AI + Ollama
+
+## 1. اول مسئله را دقیق بفهمیم
+
+الان کد تو تقریباً این است:
+
+```java
+@GetMapping("/ask")
+public String ask(@RequestParam String question) {
+
+    return chatClient
+            .prompt(question)
+            .call()
+            .content();
+}
+```
+
+فرض کن درخواست اول:
+
+```text
+My name is Tahereh.
+```
+
+مدل جواب می‌دهد:
+
+```text
+Nice to meet you, Tahereh!
+```
+
+بعد درخواست دوم:
+
+```text
+What is my name?
+```
+
+مشکل چیست؟
+
+در درخواست دوم، application تو فقط این را به مدل می‌دهد:
+
+```text
+What is my name?
+```
+
+مدل هیچ تضمینی ندارد که درخواست قبلی را ببیند.
+
+### نکته بسیار مهم
+
+این به معنی «بی‌حافظه بودن کامل Ollama» نیست.
+
+مسئله این است که **در application فعلی تو، conversation قبلی دوباره به request بعدی اضافه نمی‌شود.**
+
+LLMها در این سطح stateless هستند؛ برای داشتن context باید conversation history را در اختیار مدل قرار دهیم. Spring AI برای همین مفهوم `ChatMemory` را فراهم می‌کند. ([Spring Documentation][1])
+
+---
+
+# 2. Memory دقیقاً یعنی چه؟
+
+یک اشتباه رایج این است که فکر کنیم:
+
+> Memory یعنی مدل خودش چیزی را یاد می‌گیرد.
+
+نه.
+
+در V2، ما **مدل llama3.2 را train نمی‌کنیم.**
+
+مثلاً conversation ما:
+
+```text
+User:
+My name is Tahereh.
+
+Assistant:
+Nice to meet you Tahereh.
+
+User:
+What is my name?
+```
+
+Spring AI باید بتواند قبل از ارسال سؤال سوم، context قبلی را پیدا کند:
+
+```text
+User: My name is Tahereh.
+Assistant: Nice to meet you Tahereh.
+User: What is my name?
+```
+
+و این مجموعه messageها را به LLM بدهد.
+
+پس:
+
+```text
+Memory
+   ↓
+نگهداری conversation
+   ↓
+بازیابی conversation
+   ↓
+اضافه کردن به prompt
+   ↓
+LLM
+```
+
+---
+
+# 3. Memory با Chat History فرق دارد
+
+این تفاوت برای پروژه‌های Enterprise خیلی مهم است.
+
+Spring AI بین **Chat Memory** و **Chat History** تفاوت می‌گذارد. ([Spring Documentation][1])
+
+### Chat Memory
+
+یعنی context موردنیاز برای اینکه مدل بتواند conversation جاری را بفهمد.
+
+مثلاً:
+
+```text
+آخرین 20 message
+```
+
+### Chat History
+
+یعنی کل تاریخچه:
+
+```text
+پیام 1
+پیام 2
+پیام 3
+...
+پیام 5000
+```
+
+این دو یکی نیستند.
+
+برای پروژه Enterprise معمولاً نمی‌خواهیم Chat Memory را به عنوان سیستم اصلی Audit/History استفاده کنیم.
+
+مثلاً اگر Insurance AI Assistant داشته باشیم، ممکن است بخواهیم:
+
+```text
+Conversation History
+        ↓
+Database
+        ↓
+Audit / Reporting / UI / Search
+```
+
+ولی Memory ممکن است فقط:
+
+```text
+آخرین context موردنیاز LLM
+```
+
+را نگه دارد.
+
+خود Spring AI هم صراحتاً می‌گوید `ChatMemory` برای نگهداری کامل تاریخچه conversation بهترین انتخاب نیست و برای history کامل بهتر است از storage جداگانه مثل Spring Data استفاده شود. ([Spring Documentation][1])
+
+---
+
+# 4. معماری V2
+
+حالا معماری ما را ببین:
+
+```text
+                 ┌─────────────────┐
+                 │     Client      │
+                 └────────┬────────┘
+                          │
+                          │ question
+                          │ conversationId
+                          ▼
+                 ┌─────────────────┐
+                 │  AIController   │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │    AIService    │
+                 └────────┬────────┘
+                          │
+                          ▼
+                 ┌─────────────────────┐
+                 │     ChatClient      │
+                 │                     │
+                 │ MessageChatMemory   │
+                 │      Advisor        │
+                 └─────────┬───────────┘
+                           │
+                ┌──────────┴──────────┐
+                │                     │
+                ▼                     ▼
+        ┌──────────────┐      ┌─────────────┐
+        │  ChatMemory  │      │   Ollama    │
+        │              │      │ llama3.2     │
+        └──────────────┘      └─────────────┘
+```
+
+و داخل Memory:
+
+```text
+conversationId = "conversation-1"
+
+                 ChatMemory
+                     │
+                     ▼
+        ┌────────────────────────┐
+        │ User: My name is ...   │
+        │ Assistant: Nice ...    │
+        │ User: What is my name? │
+        └────────────────────────┘
+```
+
+---
+
+# 5. Conversation ID چیست؟
+
+این یکی از مهم‌ترین مفاهیم V2 است.
+
+فرض کن دو کاربر داریم:
+
+```text
+User A
+User B
+```
+
+User A می‌گوید:
+
+```text
+My name is Tahereh.
+```
+
+User B می‌گوید:
+
+```text
+My name is Ali.
+```
+
+اگر همه را در یک memory بریزیم، فاجعه رخ می‌دهد.
+
+باید conversationها را جدا کنیم:
+
+```text
+conversation-A
+    ↓
+Tahereh
+
+conversation-B
+    ↓
+Ali
+```
+
+Spring AI conversation memory را بر اساس **conversation ID** جدا می‌کند. ([Spring Documentation][2])
+
+مثلاً:
+
+```text
+conversationId = "user-1001"
+```
+
+و:
+
+```text
+conversationId = "user-2001"
+```
+
+---
+
+# 6. در نسخه فعلی Spring AI یک نکته مهم
+
+در APIهای فعلی Spring AI، وقتی از Memory Advisor استفاده می‌کنیم باید `ChatMemory.CONVERSATION_ID` را در هر call مشخص کنیم. اگر مشخص نشود، runtime exception دریافت می‌کنیم. ([Spring Documentation][1])
+
+بنابراین این قسمت را خیلی خوب یاد بگیر:
+
+```java
+.advisors(a ->
+        a.param(
+                ChatMemory.CONVERSATION_ID,
+                conversationId
+        )
+)
+```
+
+این خط می‌گوید:
+
+> این request متعلق به کدام conversation است؟
+
+---
+
+# 7. Advisor چیست؟
+
+اینجا یک مفهوم جدید Spring AI وارد می‌شود:
+
+## Advisor
+
+Advisor را فعلاً این‌طور تصور کن:
+
+> یک interceptor مخصوص جریان ChatClient که می‌تواند قبل/بعد از interaction کاری انجام دهد.
+
+مثلاً:
+
+```text
+ChatClient
+    │
+    ▼
+Advisor
+    │
+    ▼
+Model
+```
+
+در V2 از:
+
+```java
+MessageChatMemoryAdvisor
+```
+
+استفاده می‌کنیم.
+
+وظیفه آن:
+
+1. conversationId را دریافت کند.
+2. Memory مربوط به آن conversation را بخواند.
+3. messageهای قبلی را به request اضافه کند.
+4. request را به مدل بدهد.
+5. نتیجه را در memory ذخیره کند.
+
+Spring AI `MessageChatMemoryAdvisor` را advisor پیشنهادی برای مدیریت Conversation Memory معرفی می‌کند. ([Spring Documentation][1])
+
+---
+
+# 8. MessageChatMemoryAdvisor
+
+هسته V2 همین است:
+
+```java
+MessageChatMemoryAdvisor
+```
+
+در معماری:
+
+```text
+ChatClient
+     │
+     ▼
+MessageChatMemoryAdvisor
+     │
+     ├── read memory
+     │
+     ├── add previous messages
+     │
+     ├── call model
+     │
+     └── save conversation
+```
+
+---
+
+# 9. Memory در Spring AI از چه اجزایی ساخته شده؟
+
+یک abstraction مهم داریم:
+
+```java
+ChatMemory
+```
+
+و storage abstraction:
+
+```java
+ChatMemoryRepository
+```
+
+تقریباً:
+
+```text
+ChatMemory
+    │
+    │ manages
+    ▼
+ChatMemoryRepository
+    │
+    │ stores
+    ▼
+Messages
+```
+
+Spring AI به صورت پیش‌فرض یک `ChatMemory` در اختیار application قرار می‌دهد که از `MessageWindowChatMemory` استفاده می‌کند و در حالت پیش‌فرض repository آن `InMemoryChatMemoryRepository` است. ([Spring Documentation][1])
+
+---
+
+# 10. MessageWindowChatMemory چیست؟
+
+اسمش خودش مفهوم را توضیح می‌دهد:
+
+```text
+Message Window
+```
+
+یعنی یک پنجره از messageها را نگه می‌داریم.
+
+مثلاً فرض کنیم:
+
+```text
+maxMessages = 10
+```
+
+اگر conversation به 11 message برسد، messageهای قدیمی‌تر باید از window خارج شوند.
+
+در مستندات فعلی Spring AI، اندازه پیش‌فرض window برابر 20 message است. ([Spring Documentation][1])
+
+یعنی:
+
+```text
+Message 1
+Message 2
+...
+Message 20
+```
+
+بعد message جدید:
+
+```text
+Message 21
+```
+
+باعث می‌شود context قدیمی‌تر از window خارج شود.
+
+این کار مهم است چون نمی‌خواهیم:
+
+```text
+10000 messages
+```
+
+را هر بار به LLM بفرستیم.
+
+---
+
+# 11. حالا برویم سراغ کدنویسی
+
+تو الان این dependency را داری:
+
+```xml
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-model-ollama</artifactId>
+</dependency>
+```
+
+برای شروع V2، **فعلاً dependency جدیدی برای database لازم نداریم.**
+
+چرا؟
+
+چون می‌خواهیم اول مفهوم را با:
+
+```text
+InMemoryChatMemoryRepository
+```
+
+یاد بگیریم.
+
+بعداً در پروژه Enterprise می‌توانیم Memory را persistent کنیم.
+
+---
+
+# 12. قدم اول — AIConfig
+
+پیشنهاد من این است که `ChatClient` را از Controller خارج کنیم.
+
+ساختار:
+
+```text
+src/main/java/...
+│
+├── config
+│   └── AIConfig.java
+│
+├── controller
+│   └── AIController.java
+│
+├── service
+│   ├── AIService.java
+│   └── impl
+│       └── AIServiceImpl.java
+│
+└── dto
+    ├── AIRequestDTO.java
+    └── AIResponseDTO.java
+```
+
+---
+
+## AIConfig.java
+
+```java
+package spring.ai.example.spring_ai_demo.config;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AIConfig {
+
+    @Bean
+    public ChatMemory chatMemory() {
+
+        return MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+    }
+
+    @Bean
+    public ChatClient chatClient(
+            ChatModel chatModel,
+            ChatMemory chatMemory
+    ) {
+
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor
+                                .builder(chatMemory)
+                                .build()
+                )
+                .build();
+    }
+}
+```
+
+این مهم‌ترین کلاس V2 است.
+
+---
+
+# 13. این Config را خط به خط بفهم
+
+## Bean اول
+
+```java
+@Bean
+public ChatMemory chatMemory() {
+```
+
+به Spring می‌گوییم:
+
+> یک object از نوع ChatMemory بساز و در Application Context قرار بده.
+
+---
+
+بعد:
+
+```java
+return MessageWindowChatMemory.builder()
+        .maxMessages(20)
+        .build();
+```
+
+یعنی:
+
+```text
+ChatMemory
+     ↓
+MessageWindowChatMemory
+     ↓
+maximum = 20 messages
+```
+
+---
+
+# 14. Bean دوم
+
+```java
+@Bean
+public ChatClient chatClient(
+        ChatModel chatModel,
+        ChatMemory chatMemory
+)
+```
+
+Spring خودش:
+
+```text
+ChatModel
+```
+
+را از Ollama configuration پیدا می‌کند.
+
+و:
+
+```text
+ChatMemory
+```
+
+را هم از Bean قبلی پیدا می‌کند.
+
+پس dependency injection داریم:
+
+```text
+ChatModel ───────┐
+                 │
+                 ▼
+              ChatClient
+                 ▲
+                 │
+ChatMemory ──────┘
+```
+
+---
+
+# 15. مهم‌ترین خط
+
+```java
+.defaultAdvisors(
+    MessageChatMemoryAdvisor
+        .builder(chatMemory)
+        .build()
+)
+```
+
+یعنی:
+
+> هر request این ChatClient از این Memory Advisor استفاده کند.
+
+بنابراین بعداً در Service لازم نیست هر بار advisor را بسازیم.
+
+---
+
+# 16. AIService
+
+حالا Controller نباید مستقیم با ChatClient کار کند.
+
+ابتدا interface:
+
+```java
+package spring.ai.example.spring_ai_demo.service;
+
+public interface AIService {
+
+    String ask(
+            String question,
+            String conversationId
+    );
+}
+```
+
+---
+
+# 17. AIServiceImpl
+
+```java
+package spring.ai.example.spring_ai_demo.service.impl;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.stereotype.Service;
+import spring.ai.example.spring_ai_demo.service.AIService;
+
+@Service
+@RequiredArgsConstructor
+public class AIServiceImpl implements AIService {
+
+    private final ChatClient chatClient;
+
+    @Override
+    public String ask(
+            String question,
+            String conversationId
+    ) {
+
+        return chatClient
+                .prompt()
+                .user(question)
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        conversationId
+                ))
+                .call()
+                .content();
+    }
+}
+```
+
+---
+
+# 18. مهم‌ترین بخش Service
+
+این:
+
+```java
+.advisors(advisor -> advisor.param(
+        ChatMemory.CONVERSATION_ID,
+        conversationId
+))
+```
+
+است.
+
+مثلاً request:
+
+```text
+conversationId = tahereh-001
+```
+
+می‌شود:
+
+```java
+ChatMemory.CONVERSATION_ID = "tahereh-001"
+```
+
+Spring AI از این ID برای پیدا کردن conversation مربوطه استفاده می‌کند. ([Spring Documentation][1])
+
+---
+
+# 19. Controller
+
+حالا Controller:
+
+```java
+package spring.ai.example.spring_ai_demo.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import spring.ai.example.spring_ai_demo.service.AIService;
+
+@RestController
+@RequiredArgsConstructor
+public class AIController {
+
+    private final AIService aiService;
+
+    @GetMapping("/ask")
+    public String ask(
+            @RequestParam String question,
+            @RequestParam String conversationId
+    ) {
+
+        try {
+
+            return aiService.ask(
+                    question,
+                    conversationId
+            );
+
+        } catch (Exception ex) {
+
+            return "ERROR : " + ex.getMessage();
+        }
+    }
+}
+```
+
+---
+
+# 20. حالا اولین تست
+
+Application را اجرا کن.
+
+فرض کنیم:
+
+```text
+localhost:8080
+```
+
+### Request اول
+
+```text
+http://localhost:8080/ask?conversationId=test-1&question=My%20name%20is%20Tahereh
+```
+
+مدل احتمالاً چیزی شبیه:
+
+```text
+Nice to meet you, Tahereh!
+```
+
+می‌دهد.
+
+---
+
+### Request دوم
+
+همان conversation:
+
+```text
+http://localhost:8080/ask?conversationId=test-1&question=What%20is%20my%20name%3F
+```
+
+انتظار داریم:
+
+```text
+Your name is Tahereh.
+```
+
+چرا؟
+
+چون:
+
+```text
+conversationId = test-1
+```
+
+در هر دو request یکسان است.
+
+---
+
+# 21. تست مهم‌تر
+
+حالا conversation را عوض کن:
+
+```text
+conversationId=test-2
+```
+
+بفرست:
+
+```text
+What is my name?
+```
+
+نباید اطلاعات `test-1` را داشته باشد.
+
+چرا؟
+
+چون:
+
+```text
+test-1
+    ↓
+Tahereh
+
+test-2
+    ↓
+separate conversation
+```
+
+این تست از تست اول مهم‌تر است.
+
+چون نشان می‌دهد که واقعاً مفهوم **conversation isolation** را فهمیده‌ای.
+
+---
+
+# 22. یک تست چهارمرحله‌ای انجام بده
+
+من پیشنهاد می‌کنم دقیقاً این sequence را اجرا کنی.
+
+### Conversation A
+
+Request 1:
+
+```text
+conversationId=conversation-A
+
+My name is Tahereh.
+```
+
+Request 2:
+
+```text
+conversationId=conversation-A
+
+What is my name?
+```
+
+باید بتواند Tahereh را تشخیص دهد.
+
+---
+
+### Conversation B
+
+Request 3:
+
+```text
+conversationId=conversation-B
+
+What is my name?
+```
+
+نباید جواب:
+
+```text
+Tahereh
+```
+
+بدهد.
+
+---
+
+### دوباره A
+
+Request 4:
+
+```text
+conversationId=conversation-A
+
+What did I tell you about my name?
+```
+
+باید دوباره context مربوط به A را داشته باشد.
+
+---
+
+# 23. در واقع چه اتفاقی افتاد؟
+
+بگذار request اول را باز کنیم.
+
+کاربر می‌فرستد:
+
+```text
+conversationId = conversation-A
+
+My name is Tahereh.
+```
+
+Spring AI می‌گوید:
+
+```text
+Memory.get("conversation-A")
+```
+
+فعلاً چیزی ندارد.
+
+پس:
+
+```text
+[]
+```
+
+بعد user message وارد interaction می‌شود.
+
+مدل جواب می‌دهد:
+
+```text
+Nice to meet you Tahereh.
+```
+
+Memory حالا conversation را ذخیره می‌کند.
+
+مفهوماً:
+
+```text
+conversation-A
+
+User:
+My name is Tahereh.
+
+Assistant:
+Nice to meet you Tahereh.
+```
+
+---
+
+# 24. حالا request دوم
+
+کاربر:
+
+```text
+What is my name?
+```
+
+با:
+
+```text
+conversationId = conversation-A
+```
+
+Spring AI memory را lookup می‌کند:
+
+```text
+conversation-A
+```
+
+و پیدا می‌کند:
+
+```text
+User:
+My name is Tahereh.
+
+Assistant:
+Nice to meet you Tahereh.
+```
+
+بعد message جدید:
+
+```text
+User:
+What is my name?
+```
+
+به context اضافه می‌شود.
+
+در نتیجه مدل چیزی شبیه این context دریافت می‌کند:
+
+```text
+User:
+My name is Tahereh.
+
+Assistant:
+Nice to meet you Tahereh.
+
+User:
+What is my name?
+```
+
+و جواب می‌دهد:
+
+```text
+Tahereh
+```
+
+---
+
+# 25. نکته خیلی مهم: مدل Memory ندارد
+
+این را حتماً در ذهنت تثبیت کن:
+
+```text
+                    Memory
+                       │
+                       ▼
+User → Spring AI → Context → Ollama → LLM
+```
+
+نه:
+
+```text
+User → Ollama
+          │
+          └── خودش همه چیز را یادش می‌ماند
+```
+
+ما داریم conversation context را **مدیریت می‌کنیم**.
+
+---
+
+# 26. Memory کجا ذخیره می‌شود؟
+
+اینجا قسمت مهم Enterprise است.
+
+در configuration فعلی ما:
+
+```java
+MessageWindowChatMemory.builder()
+```
+
+استفاده کردیم.
+
+Spring AI به صورت پیش‌فرض memory را با repository درون‌حافظه‌ای مدیریت می‌کند؛ `InMemoryChatMemoryRepository` در یک `ConcurrentHashMap` پیام‌ها را نگه می‌دارد. ([Spring Documentation][1])
+
+پس فعلاً:
+
+```text
+Spring Boot JVM
+      │
+      ▼
+Memory
+      │
+      ▼
+RAM
+```
+
+نه Oracle.
+
+نه PostgreSQL.
+
+نه Ollama.
+
+نه فایل.
+
+---
+
+# 27. نتیجه مهم
+
+اگر application را restart کنی:
+
+```text
+Application Start
+       ↓
+Memory = empty
+```
+
+مثلاً قبل از restart:
+
+```text
+conversation-A
+
+My name is Tahereh.
+```
+
+بعد:
+
+```text
+Restart Application
+```
+
+و دوباره:
+
+```text
+conversation-A
+
+What is my name?
+```
+
+Memory قبلی دیگر در این in-memory configuration وجود ندارد.
+
+---
+
+# 28. پس Memory فعلی برای Production مناسب نیست؟
+
+برای **یادگیری V2 و prototype** کاملاً مناسب است.
+
+اما اگر پروژه Enterprise داشته باشیم:
+
+```text
+Spring Boot
+```
+
+که روی چند instance اجرا می‌شود:
+
+```text
+Instance 1
+Instance 2
+Instance 3
+```
+
+و Memory داخل RAM باشد، مشکل خواهیم داشت.
+
+مثلاً:
+
+```text
+User
+  │
+  ▼
+Load Balancer
+  │
+  ├──── Instance 1
+  │
+  ├──── Instance 2
+  │
+  └──── Instance 3
+```
+
+اگر conversation روی Instance 1 ذخیره شده باشد ولی request بعدی برود Instance 2:
+
+```text
+Instance 2
+    ↓
+Memory empty
+```
+
+---
+
+# 29. راه‌حل Production چیست؟
+
+Memory را persistent می‌کنیم.
+
+Spring AI برای `ChatMemoryRepository` repositoryهای مختلفی دارد؛ از جمله JDBC و repositoryهای دیگر. ([Spring Documentation][1])
+
+مثلاً:
+
+```text
+                    ┌──────────────┐
+                    │   Database   │
+                    └──────┬───────┘
+                           │
+                    ChatMemoryRepository
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+          ▼                ▼                ▼
+     Instance 1       Instance 2       Instance 3
+```
+
+آن وقت همه instanceها memory مشترک دارند.
+
+---
+
+# 30. ولی چرا الان Database اضافه نکنیم؟
+
+چون هدف V2 این نیست.
+
+هدف V2 این است که تو بفهمی:
+
+```text
+Conversation
+      ↓
+Conversation ID
+      ↓
+ChatMemory
+      ↓
+Memory Repository
+      ↓
+Memory Advisor
+      ↓
+ChatClient
+      ↓
+LLM
+```
+
+اگر همین الان PostgreSQL + pgvector + JDBC + Memory را با هم اضافه کنیم، ممکن است concept اصلی گم شود.
+
+---
+
+# 31. تفاوت ChatMemory و Vector DB
+
+این را برای مراحل بعدی یاد بگیر.
+
+الان:
+
+```text
+ChatMemory
+```
+
+برای conversation context است.
+
+بعداً:
+
+```text
+VectorStore
+```
+
+برای semantic retrieval استفاده می‌کنیم.
+
+مثلاً در RAG:
+
+```text
+PDF
+ ↓
+Chunk
+ ↓
+Embedding
+ ↓
+Vector DB
+ ↓
+Similarity Search
+ ↓
+Context
+ ↓
+LLM
+```
+
+اما Memory:
+
+```text
+Conversation
+ ↓
+ChatMemory
+ ↓
+Previous messages
+ ↓
+LLM
+```
+
+این دو را قاطی نکن.
+
+---
+
+# 32. Memory و RAG دو مسئله متفاوت هستند
+
+مثلاً کاربر می‌گوید:
+
+```text
+من 35 ساله هستم.
+```
+
+این conversation context است.
+
+Memory مناسب است:
+
+```text
+ChatMemory
+```
+
+اما اگر بگوید:
+
+```text
+طبق آیین‌نامه بیمه، شرایط بازنشستگی چیست؟
+```
+
+و جواب باید از PDFهای سازمانی استخراج شود، مسئله:
+
+```text
+RAG
+```
+
+است.
+
+پس:
+
+```text
+Memory ≠ RAG
+```
+
+---
+
+# 33. چرا MessageChatMemoryAdvisor و نه PromptChatMemoryAdvisor؟
+
+در نسخه‌های جدید Spring AI، `MessageChatMemoryAdvisor` روش توصیه‌شده است. `PromptChatMemoryAdvisor` در نسخه‌های جدید deprecated شده و باید به Message-based approach مهاجرت کرد. ([Spring Documentation][1])
+
+یعنی برای پروژه جدید:
+
+```java
+MessageChatMemoryAdvisor
+```
+
+انتخاب کن.
+
+نه:
+
+```java
+PromptChatMemoryAdvisor
+```
+
+---
+
+# 34. یک نکته درباره System Prompt
+
+فرض کن بخواهی:
+
+```java
+.system("""
+    You are an insurance assistant.
+    Always answer in Persian.
+""")
+```
+
+هم داشته باشی.
+
+می‌توانی:
+
+```java
+return chatClient
+        .prompt()
+        .system("""
+            You are an insurance assistant.
+            Always answer in Persian.
+        """)
+        .user(question)
+        .advisors(advisor -> advisor.param(
+                ChatMemory.CONVERSATION_ID,
+                conversationId
+        ))
+        .call()
+        .content();
+```
+
+این ترکیب بسیار مهم است:
+
+```text
+System instructions
+        +
+Conversation Memory
+        +
+Current User Question
+        ↓
+       LLM
+```
+
+---
+
+# 35. Service حرفه‌ای‌تر برای پروژه خودمان
+
+من برای پروژه‌ای که قرار است بعداً به Insurance AI Assistant تبدیل شود، این نسخه را پیشنهاد می‌کنم:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class AIServiceImpl implements AIService {
+
+    private final ChatClient chatClient;
+
+    @Override
+    public String ask(
+            String question,
+            String conversationId
+    ) {
+
+        return chatClient
+                .prompt()
+                .system("""
+                    You are an insurance AI assistant.
+
+                    Rules:
+                    - Answer professionally.
+                    - Prefer Persian language.
+                    - Keep the conversation context in mind.
+                    - If you are not sure about a fact, say so.
+                """)
+                .user(question)
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        conversationId
+                ))
+                .call()
+                .content();
+    }
+}
+```
+
+این نسخه به پروژه نهایی ما نزدیک‌تر است.
+
+---
+
+# 36. آیا conversationId باید از کاربر گرفته شود؟
+
+برای **آموزش V2**:
+
+```java
+@RequestParam String conversationId
+```
+
+اشکالی ندارد.
+
+ولی در پروژه واقعی، این نکته مهم است.
+
+مثلاً:
+
+```text
+GET /ask?conversationId=123
+```
+
+اگر کاربر بتواند ID کاربر دیگری را حدس بزند:
+
+```text
+conversationId=456
+```
+
+نباید بتواند conversation دیگری را بخواند.
+
+بنابراین در سیستم واقعی:
+
+```text
+conversationId
+```
+
+باید با identity/session/user authorization ترکیب شود.
+
+مثلاً مفهوماً:
+
+```text
+authenticatedUserId + conversationId
+```
+
+و backend باید ownership را بررسی کند.
+
+---
+
+# 37. یک طراحی بهتر برای API واقعی
+
+فعلاً برای یادگیری:
+
+```text
+GET /ask
+```
+
+خوب است.
+
+ولی در پروژه واقعی بهتر است:
+
+```text
+POST /api/v1/ai/chat
+```
+
+مثلاً request:
+
+```json
+{
+  "conversationId": "conversation-001",
+  "question": "شرایط بازنشستگی چیست؟"
+}
+```
+
+و response:
+
+```json
+{
+  "answer": "..."
+}
+```
+
+این همان مسیری است که بعداً در پروژه Insurance AI Assistant به آن می‌رویم.
+
+---
+
+# 38. چرا GET برای Chat ایده‌آل نیست؟
+
+چون question می‌تواند طولانی باشد و chat operation از نظر semantics بیشتر به POST نزدیک است.
+
+برای V2 آموزشی:
+
+```text
+GET /ask
+```
+
+اشکالی ندارد.
+
+ولی معماری نهایی:
+
+```text
+POST /api/v1/ai/chat
+```
+
+بهتر است.
+
+---
+
+# 39. نسخه DTO محور
+
+اگر بخواهی از همین الان معماری را حرفه‌ای‌تر کنیم:
+
+### AIRequestDTO
+
+```java
+package spring.ai.example.spring_ai_demo.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AIRequestDTO {
+
+    private String conversationId;
+
+    private String question;
+}
+```
+
+### AIResponseDTO
+
+```java
+package spring.ai.example.spring_ai_demo.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AIResponseDTO {
+
+    private String answer;
+}
+```
+
+---
+
+# 40. Service
+
+Interface:
+
+```java
+public interface AIService {
+
+    AIResponseDTO ask(AIRequestDTO request);
+}
+```
+
+Implementation:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class AIServiceImpl implements AIService {
+
+    private final ChatClient chatClient;
+
+    @Override
+    public AIResponseDTO ask(AIRequestDTO request) {
+
+        String answer = chatClient
+                .prompt()
+                .system("""
+                    You are an insurance AI assistant.
+
+                    Rules:
+                    - Answer professionally.
+                    - Prefer Persian language.
+                    - Use the conversation context when relevant.
+                """)
+                .user(request.getQuestion())
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        request.getConversationId()
+                ))
+                .call()
+                .content();
+
+        return AIResponseDTO.builder()
+                .answer(answer)
+                .build();
+    }
+}
+```
+
+---
+
+# 41. Controller
+
+```java
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/ai")
+public class AIController {
+
+    private final AIService aiService;
+
+    @PostMapping("/chat")
+    public AIResponseDTO chat(
+            @RequestBody AIRequestDTO request
+    ) {
+
+        return aiService.ask(request);
+    }
+}
+```
+
+---
+
+# 42. حالا API ما حرفه‌ای‌تر شده
+
+Request:
+
+```http
+POST /api/v1/ai/chat
+```
+
+Body:
+
+```json
+{
+  "conversationId": "conversation-001",
+  "question": "My name is Tahereh."
+}
+```
+
+Response:
+
+```json
+{
+  "answer": "Nice to meet you, Tahereh!"
+}
+```
+
+بعد:
+
+```json
+{
+  "conversationId": "conversation-001",
+  "question": "What is my name?"
+}
+```
+
+Response:
+
+```json
+{
+  "answer": "Your name is Tahereh."
+}
+```
+
+---
+
+# 43. تست isolation
+
+حالا:
+
+```json
+{
+  "conversationId": "conversation-002",
+  "question": "What is my name?"
+}
+```
+
+این conversation باید مستقل باشد.
+
+یعنی:
+
+```text
+conversation-001
+        │
+        └── Tahereh
+
+conversation-002
+        │
+        └── no knowledge about Tahereh
+```
+
+---
+
+# 44. یک نکته بسیار مهم درباره Memory
+
+Memory به معنی این نیست که مدل همیشه می‌تواند همه چیز را به یاد بیاورد.
+
+ما window داریم:
+
+```text
+MessageWindowChatMemory
+```
+
+پس memory محدود است.
+
+مثلاً:
+
+```text
+20 messages
+```
+
+و بعد:
+
+```text
+older messages
+      ↓
+evicted
+```
+
+در نتیجه اگر conversation خیلی طولانی شود، ممکن است اطلاعات خیلی قدیمی دیگر داخل context نباشد. `MessageWindowChatMemory` دقیقاً برای محدود کردن این window طراحی شده است. ([Spring Documentation][1])
+
+---
+
+# 45. پس Memory با Long-Term Memory فرق دارد
+
+این را برای Agentهای آینده نگه دار:
+
+### Short-term conversation memory
+
+```text
+MessageWindowChatMemory
+```
+
+مثلاً:
+
+```text
+آخرین 20 message
+```
+
+### Long-term memory
+
+مثلاً اطلاعاتی که بخواهیم مدت طولانی نگه داریم:
+
+```text
+User preference
+Customer profile
+Important facts
+Past interactions
+```
+
+این را نمی‌توانیم صرفاً با یک window ساده حل کنیم.
+
+ممکن است بعداً به:
+
+```text
+Database
+Vector Store
+Profile Store
+```
+
+نیاز داشته باشیم.
+
+---
+
+# 46. Memory دقیقاً چه چیزی را نگه می‌دارد؟
+
+در سطح مفهومی:
+
+```text
+UserMessage
+AssistantMessage
+```
+
+و در معماری‌های پیشرفته‌تر messageهای دیگری هم ممکن است وجود داشته باشند.
+
+اما در V2 ساده:
+
+```text
+User
+ ↓
+UserMessage
+
+Assistant
+ ↓
+AssistantMessage
+```
+
+مثلاً:
+
+```text
+conversation-A
+
+UserMessage:
+My name is Tahereh.
+
+AssistantMessage:
+Nice to meet you.
+
+UserMessage:
+What is my name?
+```
+
+---
+
+# 47. آیا Ollama این Memory را ذخیره می‌کند؟
+
+**نه.**
+
+این Memory متعلق به Spring AI application است.
+
+معماری فعلی:
+
+```text
+Spring Boot
+   │
+   ├── ChatClient
+   │
+   ├── ChatMemory
+   │
+   └──── HTTP ────> Ollama
+```
+
+Ollama وظیفه اجرای مدل را دارد.
+
+Spring AI مسئول orchestration است.
+
+---
+
+# 48. نقش هر قسمت را تفکیک کن
+
+این تفکیک برای ادامه مسیر خیلی مهم است:
+
+### Ollama
+
+```text
+Model Runtime
+```
+
+مدل:
+
+```text
+llama3.2
+```
+
+را اجرا می‌کند.
+
+---
+
+### ChatModel
+
+Abstraction مربوط به model interaction.
+
+---
+
+### ChatClient
+
+API سطح بالاتر برای ساخت interaction:
+
+```java
+chatClient
+    .prompt()
+    .user(...)
+    .call()
+```
+
+---
+
+### ChatMemory
+
+مدیریت conversation context.
+
+---
+
+### ChatMemoryRepository
+
+Storage layer برای messageهای memory.
+
+---
+
+### MessageChatMemoryAdvisor
+
+Memory را وارد flow مربوط به ChatClient می‌کند.
+
+---
+
+# 49. Lifecycle کامل یک Request
+
+این را چند بار بخوان.
+
+Request:
+
+```text
+question = "What is my name?"
+conversationId = "conversation-A"
+```
+
+### مرحله 1
+
+Controller:
+
+```text
+AIController
+```
+
+request را دریافت می‌کند.
+
+### مرحله 2
+
+Controller:
+
+```text
+AIService
+```
+
+را صدا می‌زند.
+
+### مرحله 3
+
+Service:
+
+```text
+ChatClient
+```
+
+را صدا می‌زند.
+
+### مرحله 4
+
+Advisor:
+
+```text
+MessageChatMemoryAdvisor
+```
+
+فعال می‌شود.
+
+### مرحله 5
+
+Memory:
+
+```text
+conversation-A
+```
+
+را lookup می‌کند.
+
+### مرحله 6
+
+history پیدا می‌شود:
+
+```text
+My name is Tahereh.
+```
+
+### مرحله 7
+
+history + current question
+
+به model context می‌رود.
+
+### مرحله 8
+
+Ollama:
+
+```text
+llama3.2
+```
+
+جواب تولید می‌کند.
+
+### مرحله 9
+
+Memory interaction را مدیریت/ذخیره می‌کند.
+
+### مرحله 10
+
+Response به Controller برمی‌گردد.
+
+---
+
+# 50. یک تصویر ذهنی بسیار مهم
+
+کل V2 را این‌طور حفظ کن:
+
+```text
+                 conversationId
+                       │
+                       ▼
+                  ┌─────────┐
+                  │ Memory  │
+                  └────┬────┘
+                       │
+                 previous messages
+                       │
+                       ▼
+User ────────> ChatClient
+                   │
+                   ▼
+              Memory Advisor
+                   │
+                   ▼
+             Previous Context
+                   +
+             Current Question
+                   │
+                   ▼
+                 Ollama
+                   │
+                   ▼
+                llama3.2
+                   │
+                   ▼
+                Answer
+                   │
+                   ▼
+                Memory
+```
+
+---
+
+# 51. یک تست مهم برای درک واقعی Memory
+
+بعد از اینکه کد را نوشتی، این conversation را بساز:
+
+### Request 1
+
+```text
+My name is Tahereh.
+I am a Java developer.
+```
+
+### Request 2
+
+```text
+What is my name?
+```
+
+### Request 3
+
+```text
+What programming language do I work with?
+```
+
+### Request 4
+
+```text
+What did I tell you about myself?
+```
+
+اگر همه درست جواب داده شوند، مفهوم اصلی V2 را گرفته‌ای.
+
+---
+
+# 52. تست conversation isolation
+
+بعد:
+
+### conversation-1
+
+```text
+My name is Tahereh.
+```
+
+### conversation-2
+
+```text
+My name is Reza.
+```
+
+بعد:
+
+### conversation-1
+
+```text
+What is my name?
+```
+
+انتظار:
+
+```text
+Tahereh
+```
+
+و:
+
+### conversation-2
+
+```text
+What is my name?
+```
+
+انتظار:
+
+```text
+Reza
+```
+
+این تست خیلی مهم است.
+
+---
+
+# 53. تست restart
+
+بعد application را restart کن.
+
+دوباره:
+
+```text
+conversation-1
+```
+
+و:
+
+```text
+What is my name?
+```
+
+احتمالاً دیگر context قبلی را ندارد.
+
+این **bug نیست**.
+
+اتفاقاً نشان می‌دهد که تو فهمیده‌ای:
+
+```text
+InMemoryChatMemoryRepository
+```
+
+یعنی:
+
+```text
+RAM
+```
+
+---
+
+# 54. Production Version چه تفاوتی دارد؟
+
+در production معماری می‌تواند:
+
+```text
+                  ┌─────────────┐
+                  │ PostgreSQL  │
+                  └──────┬──────┘
+                         │
+                ChatMemoryRepository
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+          ▼              ▼              ▼
+       App-1           App-2          App-3
+          │              │              │
+          └──────────────┼──────────────┘
+                         │
+                     ChatClient
+                         │
+                       Ollama
+```
+
+Spring AI برای JDBC `ChatMemoryRepository` هم support دارد و در مستندات برای relational databaseها repository و schema مربوطه را ارائه کرده است. ([Spring Documentation][1])
+
+اما این را می‌گذاریم برای زمانی که به persistence برسیم.
+
+---
+
+# 55. چرا conversationId را client تعیین کند؟
+
+در demo:
+
+```text
+conversationId
+```
+
+را client می‌دهد.
+
+اما در سیستم واقعی باید مراقب باشی.
+
+مثلاً:
+
+```text
+POST /chat
+
+{
+   "conversationId": "customer-100",
+   ...
+}
+```
+
+نباید صرفاً به این مقدار اعتماد کنیم.
+
+بهتر است server بررسی کند:
+
+```text
+Authenticated User
+        │
+        ▼
+Owns conversation?
+        │
+     ┌──┴──┐
+    yes    no
+     │      │
+     ▼      ▼
+  Memory   403
+```
+
+این موضوع مخصوصاً وقتی به پروژه Insurance AI Assistant برسیم بسیار مهم خواهد بود.
+
+---
+
+# 56. چرا این V2 برای تو مهم است؟
+
+چون V3 و V7 و V8 روی همین مفاهیم سوار می‌شوند.
+
+### V3
+
+```text
+Structured Output
+```
+
+### V4
+
+```text
+PDF
+```
+
+### V5
+
+```text
+Embedding
+```
+
+### V6
+
+```text
+Vector DB
+```
+
+### V7
+
+```text
+RAG
+```
+
+### V8
+
+```text
+Tool Calling
+```
+
+### V9
+
+```text
+Agent
+```
+
+### V10
+
+```text
+Multi Agent
+```
+
+مسیر فایل خودت هم دقیقاً همین progression را پیشنهاد می‌کند.
+
+---
+
+# 57. یک نکته مهم برای آینده: Memory + RAG
+
+بعداً ممکن است معماری ما این شود:
+
+```text
+                       User
+                         │
+                         ▼
+                    ChatClient
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+        Chat Memory               RAG
+              │                     │
+              │                Vector Store
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                       LLM
+```
+
+یعنی مدل هم:
+
+```text
+conversation context
+```
+
+دارد و هم:
+
+```text
+business knowledge
+```
+
+از RAG دریافت می‌کند.
+
+این دقیقاً یکی از دلایلی است که باید Memory را قبل از RAG یاد بگیری.
+
+---
+
+# 58. اشتباهات رایج V2
+
+## اشتباه 1
+
+فکر کنیم:
+
+```text
+Ollama خودش conversation را نگه می‌دارد.
+```
+
+در application architecture ما چنین فرضی نکن.
+
+---
+
+## اشتباه 2
+
+برای همه کاربران:
+
+```java
+conversationId = "default"
+```
+
+استفاده کنیم.
+
+این باعث مخلوط شدن conversationها می‌شود.
+
+---
+
+## اشتباه 3
+
+Memory را با Chat History یکی بدانیم.
+
+نه:
+
+```text
+Memory = context
+History = complete record
+```
+
+---
+
+## اشتباه 4
+
+فکر کنیم Memory یعنی database.
+
+نه.
+
+Memory abstraction است.
+
+می‌تواند پشتش:
+
+```text
+In-memory
+JDBC
+Redis
+...
+```
+
+باشد.
+
+---
+
+## اشتباه 5
+
+فکر کنیم Memory یعنی LLM را train کرده‌ایم.
+
+نه.
+
+هیچ training اتفاقی نیفتاده.
+
+ما فقط context را دوباره در اختیار مدل قرار می‌دهیم.
+
+---
+
+# 59. یک نکته درباره Token
+
+هرچه memory بزرگ‌تر شود:
+
+```text
+more messages
+      ↓
+more tokens
+      ↓
+larger prompt
+      ↓
+more resource usage
+```
+
+بنابراین Memory باید کنترل شود.
+
+به همین دلیل:
+
+```java
+.maxMessages(20)
+```
+
+داریم.
+
+بعداً در معماری‌های حرفه‌ای‌تر ممکن است:
+
+```text
+Summarization
++
+Window
++
+Long-term memory
+```
+
+داشته باشیم.
+
+---
+
+# 60. تمرین اصلی تو
+
+قبل از رفتن به V3، خودت این موارد را پیاده کن.
+
+### مرحله 1
+
+`AIConfig` بساز.
+
+### مرحله 2
+
+`ChatMemory` Bean بساز.
+
+### مرحله 3
+
+`MessageChatMemoryAdvisor` را به `ChatClient` اضافه کن.
+
+### مرحله 4
+
+`AIService` بساز.
+
+### مرحله 5
+
+`AIController` را از ChatClient جدا کن.
+
+### مرحله 6
+
+`conversationId` را به request اضافه کن.
+
+### مرحله 7
+
+دو conversation ایجاد کن.
+
+### مرحله 8
+
+restart تست کن.
+
+### مرحله 9
+
+isolation تست کن.
+
+---
+
+# 61. ساختار نهایی V2
+
+من برای پروژه فعلی تو این ساختار را پیشنهاد می‌کنم:
+
+```text
+spring-ai-demo
+│
+├── src/main/java
+│   │
+│   └── spring.ai.example.spring_ai_demo
+│       │
+│       ├── config
+│       │   └── AIConfig.java
+│       │
+│       ├── controller
+│       │   └── AIController.java
+│       │
+│       ├── dto
+│       │   ├── AIRequestDTO.java
+│       │   └── AIResponseDTO.java
+│       │
+│       ├── service
+│       │   └── AIService.java
+│       │
+│       ├── service.impl
+│       │   └── AIServiceImpl.java
+│       │
+│       └── SpringAiDemoApplication.java
+│
+└── src/main/resources
+    └── application.yml
+```
+
+---
+
+# 62. application.yml
+
+فعلاً configuration اصلی Ollama خودت را نگه دار.
+
+اگر چیزی شبیه این داری:
+
+```yaml
+spring:
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.2
+```
+
+کافی است.
+
+Memory فعلی را لازم نیست در YAML تعریف کنیم؛ Bean آن را در Java configuration ساخته‌ایم.
+
+---
+
+# 63. نسخه نهایی Config که باید داشته باشی
+
+این را به عنوان مرجع V2 نگه دار:
+
+```java
+@Configuration
+public class AIConfig {
+
+    @Bean
+    public ChatMemory chatMemory() {
+
+        return MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+    }
+
+    @Bean
+    public ChatClient chatClient(
+            ChatModel chatModel,
+            ChatMemory chatMemory
+    ) {
+
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor
+                                .builder(chatMemory)
+                                .build()
+                )
+                .build();
+    }
+}
+```
+
+---
+
+# 64. نسخه نهایی Service
+
+```java
+@Service
+@RequiredArgsConstructor
+public class AIServiceImpl implements AIService {
+
+    private final ChatClient chatClient;
+
+    @Override
+    public AIResponseDTO ask(AIRequestDTO request) {
+
+        String answer = chatClient
+                .prompt()
+                .system("""
+                    You are an insurance AI assistant.
+
+                    Rules:
+                    - Answer professionally.
+                    - Prefer Persian language.
+                    - Use conversation context when relevant.
+                """)
+                .user(request.getQuestion())
+                .advisors(advisor -> advisor.param(
+                        ChatMemory.CONVERSATION_ID,
+                        request.getConversationId()
+                ))
+                .call()
+                .content();
+
+        return AIResponseDTO.builder()
+                .answer(answer)
+                .build();
+    }
+}
+```
+
+---
+
+# 65. چیزی که باید واقعاً از V2 یاد گرفته باشی
+
+اگر از تو در مصاحبه بپرسند:
+
+> Spring AI Conversation Memory چگونه کار می‌کند؟
+
+نباید فقط بگویی:
+
+> `MessageChatMemoryAdvisor` داریم.
+
+باید بتوانی توضیح بدهی:
+
+```text
+ChatClient
+   ↓
+MessageChatMemoryAdvisor
+   ↓
+ChatMemory
+   ↓
+ChatMemoryRepository
+   ↓
+conversationId
+   ↓
+retrieve previous messages
+   ↓
+add them to current interaction
+   ↓
+LLM
+   ↓
+store conversation messages
+```
+
+و باید بتوانی تفاوت این‌ها را توضیح بدهی:
+
+```text
+ChatMemory
+ChatMemoryRepository
+MessageWindowChatMemory
+MessageChatMemoryAdvisor
+conversationId
+Chat History
+```
+
+اگر این پنج/شش مفهوم را خوب بفهمی، V2 را واقعاً یاد گرفته‌ای، نه اینکه فقط کدش را کپی کرده باشی.
+
+---
+
+# 66. چک‌لیست پایان V2
+
+قبل از رفتن به V3، این checklist را کامل کن:
+
+```text
+[ ] ChatClient از Controller خارج شده
+[ ] AIService ایجاد شده
+[ ] AIController ایجاد شده
+[ ] ChatMemory Bean ایجاد شده
+[ ] MessageWindowChatMemory را فهمیده‌ام
+[ ] MessageChatMemoryAdvisor را فهمیده‌ام
+[ ] conversationId را فهمیده‌ام
+[ ] ChatMemory و Chat History را می‌توانم توضیح بدهم
+[ ] می‌دانم InMemoryChatMemoryRepository چیست
+[ ] می‌دانم چرا restart باعث از دست رفتن Memory می‌شود
+[ ] دو conversation مستقل تست کرده‌ام
+[ ] Memory را با RAG اشتباه نمی‌گیرم
+[ ] می‌دانم Ollama مسئول Memory نیست
+[ ] می‌دانم Memory فعلی production persistence نیست
+[ ] می‌دانم بعداً می‌توانیم JDBC/DB اضافه کنیم
+[ ] می‌دانم conversationId در هر call باید مشخص شود
+```
+
+---
+
+# 67. معیار قبولی V2
+
+من پیشنهاد می‌کنم تا وقتی این سناریو برایت کار نکرده، وارد V3 نشوی:
+
+### Conversation A
+
+```text
+User:
+My name is Tahereh.
+I am a Java developer.
+```
+
+بعد:
+
+```text
+User:
+What is my name?
+```
+
+و:
+
+```text
+User:
+What programming language do I work with?
+```
+
+هر دو باید context قبلی را بفهمند.
+
+### Conversation B
+
+```text
+User:
+My name is Ali.
+```
+
+بعد:
+
+```text
+What is my name?
+```
+
+باید:
+
+```text
+Ali
+```
+
+باشد، نه Tahereh.
+
+و در نهایت:
+
+```text
+Restart Application
+```
+
+و مشاهده کنی که Memory قبلی از بین رفته است.
+
+اگر این سه تست را انجام دادی، **V2 را تمام‌شده در نظر می‌گیریم.**
+
+---
+
+## نقشه راه بعد از V2
+
+بعد از اینکه این مرحله را خودت کدنویسی کردی، مسیر ما این خواهد بود:
+
+```text
+V1 ✅
+Basic Chat + Ollama
+
+       ↓
+
+V2 ← الان اینجا هستیم
+Conversation Memory
+
+       ↓
+
+V3
+Structured Output
+DTO ← LLM
+
+       ↓
+
+V4
+PDF Reader
+
+       ↓
+
+V5
+Embedding
+
+       ↓
+
+V6
+PostgreSQL + pgvector
+
+       ↓
+
+V7
+RAG
+
+       ↓
+
+V8
+Tool Calling
+
+       ↓
+
+V9
+Insurance Agent
+
+       ↓
+
+V10
+Multi Agent
+```
+
+این ترتیب با همان مسیر آموزشی فایل تو منطبق است.
+
+**پس فعلاً V3 را شروع نکن.** اول همین V2 را روی پروژه خودت پیاده کن و چهار تست بالا را انجام بده. وقتی اجرا شد، مرحله بعدی ما **V3: Structured Output با DTO و خروجی JSON/Typed Object از LLM** خواهد بود؛ آنجا وارد یکی از مهم‌ترین بخش‌های Spring AI برای یک Java/Spring Boot Developer می‌شویم.
+
+[1]: https://docs.spring.io/spring-ai/reference/1.0/api/chat-memory.html?utm_source=chatgpt.com "Chat Memory :: Spring AI Reference"
+[2]: https://docs.spring.io/spring-ai/reference/api/chat-memory.html?utm_source=chatgpt.com "Chat Memory :: Spring AI Reference"
