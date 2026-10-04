@@ -9,4 +9,6 @@ import spring.ai.example.spring_ai_demo.dto.v4.PdfUploadResponseDTO;
 public interface PdfService {
 
     PdfUploadResponseDTO upload(MultipartFile file);
+
+
 }
