@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import spring.ai.example.spring_ai_demo.dto.AIRequestDTO;
 import spring.ai.example.spring_ai_demo.dto.AIResponseDTO;
+import spring.ai.example.spring_ai_demo.dto.InsuranceAnalysisDTO;
 import spring.ai.example.spring_ai_demo.service.AIService;
 
 
@@ -26,6 +27,13 @@ import spring.ai.example.spring_ai_demo.service.AIService;
 public class AIController {
 
     private final AIService aiService;
+
+    @PostMapping("/analyze")
+    public InsuranceAnalysisDTO analyze(
+            @RequestBody AIRequestDTO request) {
+
+        return aiService.analyzeInsuranceQuestion(request);
+    }
 
     @PostMapping("/chat")
     public AIResponseDTO chat(
