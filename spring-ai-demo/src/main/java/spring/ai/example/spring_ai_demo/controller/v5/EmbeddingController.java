@@ -71,3 +71,46 @@ public class EmbeddingController {
     }
 }
 
+/**
+ *
+ Document A
+ ↓
+ Embedding A ─────┐
+ │
+ ├──→ Cosine Similarity → 0..1
+ │
+ Embedding B ─────┘
+ ↑
+ Document B
+
+---------------------------------------------
+
+ "شرایط بازنشستگی بیمه شده چیست؟"
+ ↓
+ Vector A
+
+ "برای بازنشسته شدن چه شرایطی لازم است؟"
+ ↓
+ Vector B
+
+ ↓
+ Cosine Similarity
+ ↓
+ 0.91
+-------------------------------------------
+
+ "شرایط بازنشستگی بیمه شده چیست؟"
+ ↓
+ Vector A
+
+ "هزینه تمدید بیمه چقدر است؟"
+ ↓
+ Vector C
+
+ ↓
+ Cosine Similarity
+ ↓
+ 0.35
+
+
+ */
