@@ -12,4 +12,5 @@ import spring.ai.example.spring_ai_demo.dto.v4.PdfDocumentResponseDTO;
 public interface PdfDocumentService {
 
     PdfDocumentResponseDTO parse(MultipartFile file);
+    Document createDocument(MultipartFile file);
 }

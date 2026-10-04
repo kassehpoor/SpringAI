@@ -1,7 +1,10 @@
 # SpringAI
+https://github.com/ollama/ollama/releases
+
 
 V1 ✅
 Basic Chat + Ollama
+ollama pull llama3.2
 
        ↓
 
@@ -23,6 +26,7 @@ PDF Reader
 
 V5
 Embedding
+ollama pull nomic-embed-text
 
        ↓
 

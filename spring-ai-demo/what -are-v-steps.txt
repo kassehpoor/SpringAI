@@ -86,13 +86,67 @@ Client / Swagger
 ---------------------------------
 V5
 Embedding
+
+
+Chat Model ≠ Embedding Model
+
+ollama pull nomic-embed-text
+
+PDF
+ ↓
+Text
+ ↓
+Embedding
+ ↓
+Vector
+
+
+
+                    V4
+PDF
+ ↓
+PDFBox
+ ↓
+Text
+ ↓
+Document
+ │
+ └──────────────────────┐
+                        │
+                        ▼
+                       V5
+                 EmbeddingModel
+                        │
+                        ▼
+                     Vector
+                        │
+                        ▼
+                 List<Double>
 ---------------------------------
 V6
 Vector DB
+
+
+Vector
+   ↓
+PostgreSQL + pgvector
 ---------------------------------
 V7
 RAG
 
+
+Question
+   ↓
+Embedding
+   ↓
+Similarity Search
+   ↓
+Relevant Documents
+   ↓
+LLM
+   ↓
+Answer
+--------------------------------
 
 PDF
  ↓

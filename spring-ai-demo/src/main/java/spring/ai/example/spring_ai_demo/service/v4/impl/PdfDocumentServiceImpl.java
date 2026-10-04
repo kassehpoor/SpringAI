@@ -104,4 +104,31 @@ public class PdfDocumentServiceImpl implements PdfDocumentService {
                 .text(document.getText())
                 .build();
     }
+
+    @Override
+    public Document createDocument(MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "PDF file is empty"
+            );
+        }
+
+        PdfParseResultDTO result =
+                pdfParserService.parse(file);
+
+        return new Document(
+                result.getText(),
+                Map.of(
+                        "fileName",
+                        file.getOriginalFilename(),
+
+                        "contentType",
+                        file.getContentType(),
+
+                        "pageCount",
+                        result.getPageCount()
+                )
+        );
+    }
 }
