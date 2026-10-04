@@ -127,9 +127,14 @@ V6
 Vector DB
 
 
-Vector
-   ↓
+
+Java
+ ↓
+Embedding
+ ↓
 PostgreSQL + pgvector
+ ↓
+Vector Similarity Search
 ---------------------------------
 V7
 RAG
@@ -182,6 +187,28 @@ Answer
               └──────────┬──────────┘
                          ▼
                        LLM
+
+
+
+
+
+                       User Question
+                             ↓
+                          Embedding
+                             ↓
+                        Question Vector
+                             ↓
+                        ┌────┴────┐
+                        ↓         ↓
+                       Vector 1  Vector 2 ...
+                        ↓         ↓
+                       Similarity Search
+                             ↓
+                       Relevant Documents
+                             ↓
+                             LLM
+                             ↓
+                       Answer
 ---------------------------------
 V8
 Tool Calling

@@ -39,6 +39,7 @@ public class TextSimilarityController {
 
     private final TextSimilarityService textSimilarityService;
 
+    // Semantic Similarity
     @PostMapping("/text")
     public TextSimilarityResponseDTO calculate(
             @RequestBody TextSimilarityRequestDTO request) {
