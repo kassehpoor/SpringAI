@@ -662,7 +662,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
-import spring.ai.example.spring_ai_demo.service.AIService;
+import spring.ai.example.spring_ai_demo.service.v2v3.AIService;
 
 @Service
 @RequiredArgsConstructor
@@ -731,7 +731,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import spring.ai.example.spring_ai_demo.service.AIService;
+import spring.ai.example.spring_ai_demo.service.v2v3.AIService;
 
 @RestController
 @RequiredArgsConstructor

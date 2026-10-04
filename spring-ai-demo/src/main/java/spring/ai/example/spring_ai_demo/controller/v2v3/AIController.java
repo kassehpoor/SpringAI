@@ -1,11 +1,11 @@
-package spring.ai.example.spring_ai_demo.controller;
+package spring.ai.example.spring_ai_demo.controller.v2v3;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import spring.ai.example.spring_ai_demo.dto.AIRequestDTO;
-import spring.ai.example.spring_ai_demo.dto.AIResponseDTO;
-import spring.ai.example.spring_ai_demo.dto.InsuranceAnalysisDTO;
-import spring.ai.example.spring_ai_demo.service.AIService;
+import spring.ai.example.spring_ai_demo.dto.v2.AIRequestDTO;
+import spring.ai.example.spring_ai_demo.dto.v2.AIResponseDTO;
+import spring.ai.example.spring_ai_demo.dto.v3.InsuranceAnalysisDTO;
+import spring.ai.example.spring_ai_demo.service.v2v3.AIService;
 
 
 /**
@@ -23,19 +23,19 @@ import spring.ai.example.spring_ai_demo.service.AIService;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/ai")
+@RequestMapping("/api/v2v3/ai")
 public class AIController {
 
     private final AIService aiService;
 
-    @PostMapping("/analyze")
+    @PostMapping("/v3/analyze")
     public InsuranceAnalysisDTO analyze(
             @RequestBody AIRequestDTO request) {
 
         return aiService.analyzeInsuranceQuestion(request);
     }
 
-    @PostMapping("/chat")
+    @PostMapping("/v2/chat")
     public AIResponseDTO chat(
             @RequestBody AIRequestDTO request
     ) {

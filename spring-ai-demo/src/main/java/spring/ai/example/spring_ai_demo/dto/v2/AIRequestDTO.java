@@ -1,4 +1,4 @@
-package spring.ai.example.spring_ai_demo.dto;
+package spring.ai.example.spring_ai_demo.dto.v2;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,11 +10,14 @@ import lombok.NoArgsConstructor;
  */
 
 
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AIResponseDTO {
+public class AIRequestDTO {
 
-    private String answer;
+    private String conversationId;
+
+    private String question;
 }

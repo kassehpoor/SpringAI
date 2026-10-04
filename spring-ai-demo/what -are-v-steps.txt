@@ -1,0 +1,140 @@
+
+v1
+impl ollama
+---------------------------------
+v2
+chatMemory
+
+
+
+ChatClient
+   ↓
+MessageChatMemoryAdvisor
+   ↓
+ChatMemory
+   ↓
+ChatMemoryRepository
+   ↓
+conversationId
+   ↓
+retrieve previous messages
+   ↓
+add them to current interaction
+   ↓
+LLM
+   ↓
+store conversation messages
+---------------------------------
+V3
+Structured Output
+---------------------------------
+V4
+PDF
+
+
+PDF
+ ↓
+Upload
+ ↓
+Spring Boot
+ ↓
+PDF Reader
+ ↓
+Extract Text
+ ↓
+Document
+ ↓
+نمایش / پردازش متن
+
+
+
+                  V4 — PDF Reader
+
+Client / Swagger
+       │
+       │ MultipartFile
+       ▼
+┌──────────────────────┐
+│ PDF Upload API       │  ← V4.1
+└──────────┬───────────┘
+           │
+           │ MultipartFile
+           ▼
+┌──────────────────────┐
+│ PDF Parser Service   │  ← V4.2
+│ PDF → Text            │
+└──────────┬───────────┘
+           │
+           │ extracted text
+           ▼
+┌──────────────────────┐
+│ Spring AI Document   │  ← V4.3
+│ text + metadata      │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ V4.4 Service/DTO/API │
+│ Swagger Test         │
+└──────────────────────┘
+
+              ❌ PostgreSQL
+              ❌ pgvector
+              ❌ Embedding
+              ❌ RAG
+
+---------------------------------
+V5
+Embedding
+---------------------------------
+V6
+Vector DB
+---------------------------------
+V7
+RAG
+
+
+PDF
+ ↓
+Text
+ ↓
+Chunk
+ ↓
+Embedding
+ ↓
+Vector DB
+ ↓
+Similarity Search
+ ↓
+LLM
+ ↓
+Answer
+
+
+
+
+                       User
+                         │
+                         ▼
+                    ChatClient
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+        Chat Memory               RAG
+              │                     │
+              │                Vector Store
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                       LLM
+---------------------------------
+V8
+Tool Calling
+---------------------------------
+V9
+Agent
+---------------------------------
+V10
+Multi Agent
+---------------------------------

@@ -1,4 +1,4 @@
-package spring.ai.example.spring_ai_demo.dto;
+package spring.ai.example.spring_ai_demo.dto.v3;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
