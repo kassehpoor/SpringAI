@@ -31,22 +31,69 @@ public class PdfEmbeddingServiceImpl implements PdfEmbeddingService {
     }
 
 
-//    public EmbeddingResponseDTO createEmbedding(String text) {
-//
-//        if (text == null || text.isBlank()) {
-//            throw new IllegalArgumentException(
-//                    "Text must not be empty"
-//            );
-//        }
-//
-//        float[] vector =
-//                embeddingModel.embed(text);
-//
-//        return EmbeddingResponseDTO.builder()
-//                .text(text)
-//                .dimension(vector.length)
-////                .vector(vector)
-//                .build();
-//    }
+
 
 }
+
+
+/** api for Embedding Text instead of SpringDocument
+ *
+ * @RestController
+ * @RequestMapping("/api/v5/embedding")
+ * @RequiredArgsConstructor
+ * public class EmbeddingController {
+ *
+ *     private final EmbeddingService embeddingService;
+ *
+ *     @PostMapping
+ *     public EmbeddingResponseDTO createEmbedding(
+ *             @RequestParam String text) {
+ *
+ *         return embeddingService.createEmbedding(text);
+ *     }
+ * }
+ *
+ *
+ *
+ * @Service
+ * @RequiredArgsConstructor
+ * public class EmbeddingService {
+ *
+ *     private final EmbeddingModel embeddingModel;
+ *
+ *     public EmbeddingResponseDTO createEmbedding(String text) {
+ *
+ *         if (text == null || text.isBlank()) {
+ *             throw new IllegalArgumentException(
+ *                     "Text must not be empty"
+ *             );
+ *         }
+ *
+ *         List<Double> vector =
+ *                 embeddingModel.embed(text);
+ *
+ *         return EmbeddingResponseDTO.builder()
+ *                 .text(text)
+ *                 .dimension(vector.size())
+ *                 .vector(vector)
+ *                 .build();
+ *     }
+ * }
+ *
+ *
+ * @Data
+ * @Builder
+ * @NoArgsConstructor
+ * @AllArgsConstructor
+ * public class EmbeddingResponseDTO {
+ *
+ *     private String text;
+ *
+ *     private int dimension;
+ *
+ *     private List<Double> vector;
+ * }
+ *
+ *
+
+ */

@@ -15,7 +15,7 @@
 
 	<groupId>spring.ai.example</groupId>
 	<artifactId>spring-ai-demo</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>6.0.0</version>
 	<name>spring-ai-demo</name>
 	<description>Spring AI Demo Project</description>
 
@@ -37,6 +37,21 @@
 	</dependencyManagement>
 
 	<dependencies>
+
+
+<!--		postgresql-->
+<!--		<dependency>-->
+<!--			<groupId>org.springframework.boot</groupId>-->
+<!--			<artifactId>spring-boot-starter-data-jpa</artifactId>-->
+<!--		</dependency>-->
+
+<!--		<dependency>-->
+<!--			<groupId>org.postgresql</groupId>-->
+<!--			<artifactId>postgresql</artifactId>-->
+<!--			<scope>runtime</scope>-->
+<!--		</dependency>-->
+<!--		-->
+
 
 <!--		PDF Binary-->
 <!--		↓-->

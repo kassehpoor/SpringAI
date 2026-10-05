@@ -135,9 +135,11 @@ Embedding
 PostgreSQL + pgvector
  ↓
 Vector Similarity Search
+
+https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
 ---------------------------------
 V7
-RAG
+RAG (Retrieval Augmented Generation)
 
 
 Question
