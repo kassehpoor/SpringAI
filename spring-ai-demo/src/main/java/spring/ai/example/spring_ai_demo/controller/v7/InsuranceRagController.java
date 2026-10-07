@@ -14,6 +14,42 @@ import spring.ai.example.spring_ai_demo.service.v7.InsuranceRagService;
  * @author Tahereh Kasehpoor
  */
 
+
+/**+
+ Question
+ ↓
+ nomic-embed-text
+ ↓
+ 768-dimensional vector
+ ↓
+ pgvector cosine distance
+ ↓
+ Top K
+ ↓
+ LLM
+ */
+
+
+
+
+
+
+/**
+ {
+ "question": "شرایط بازنشستگی بیمه شده چیست؟",
+ "topK": 3
+ }
+ */
+
+/**
+ {
+ "question": "چه کسانی بعد از فوت بیمه شده می‌توانند مستمری دریافت کنند؟",
+ "topK": 3
+ }
+
+ 04-survivors-pension.pdf
+ */
+
 @RestController
 @RequestMapping("/api/v7/rag")
 @RequiredArgsConstructor
@@ -28,3 +64,41 @@ public class InsuranceRagController {
         return ragService.ask(request);
     }
 }
+
+
+/**
+ پس V6 و V7 را در ذهن این‌طور جدا کن
+ V6 — Retrieval
+ Question
+ ↓
+ Embedding
+ ↓
+ pgvector
+ ↓
+ Top K Documents
+
+ سؤال:
+
+ کدام اسناد به سؤال من شبیه‌ترند؟
+
+ V7 — Retrieval + Generation
+ Question
+ ↓
+ Embedding
+ ↓
+ pgvector
+ ↓
+ Top K Documents
+ ↓
+ Context
+ ↓
+ LLM
+ ↓
+ Answer
+
+ سؤال:
+
+ با استفاده از اسناد مرتبط، پاسخ سؤال من چیست؟
+
+ این همان R در RAG = Retrieval و G در RAG = Generation است.
+ */
