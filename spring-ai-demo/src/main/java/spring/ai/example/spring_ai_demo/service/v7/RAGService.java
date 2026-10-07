@@ -20,6 +20,15 @@ package spring.ai.example.spring_ai_demo.service.v7;
  *    ↓
  * Answer
  */
+
+/**
+ *
+ * service
+ *  ├── InsuranceDocumentService
+ *  ├── InsuranceDocumentSearchService
+ *  │
+ *  └── InsuranceRagService
+ */
 public class RAGService {
 }
 
