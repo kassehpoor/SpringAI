@@ -21,6 +21,28 @@ public class InsuranceDocumentSearchController {
 
     private final InsuranceDocumentSearchService searchService;
 
+    /**
+     *
+     شرایط بازنشستگی بیمه شده چیست؟
+     */
+
+    /**
+     *
+     چه کسانی بعد از فوت بیمه شده می‌توانند مستمری دریافت کنند؟
+     */
+
+
+    /**
+     *
+     insurance_document
+     │
+     ├── id
+     ├── content
+     ├── embedding       VECTOR(768)
+     ├── created_at
+     ├── file_name
+     └── page_count
+     */
     @PostMapping("/search")
     public InsuranceDocumentSearchResponseDTO search(
             @Valid @RequestBody InsuranceDocumentSearchRequestDTO request) {

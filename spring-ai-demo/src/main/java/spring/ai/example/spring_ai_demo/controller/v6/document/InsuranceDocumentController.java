@@ -2,12 +2,11 @@ package spring.ai.example.spring_ai_demo.controller.v6.document;
 
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import spring.ai.example.spring_ai_demo.dto.v6.document.InsuranceDocumentRequestDTO;
 import spring.ai.example.spring_ai_demo.dto.v6.document.InsuranceDocumentResponseDTO;
+import spring.ai.example.spring_ai_demo.dto.v6.document.PdfEmbeddingResponseDTO;
 import spring.ai.example.spring_ai_demo.service.v6.document.InsuranceDocumentService;
 
 /**
@@ -43,5 +42,17 @@ public class InsuranceDocumentController {
              @RequestBody InsuranceDocumentRequestDTO request) {
 
         return documentService.save(request);
+    }
+
+
+
+    @PostMapping(
+            value = "/pdf",
+            consumes = "multipart/form-data"
+    )
+    public PdfEmbeddingResponseDTO savePdf(
+            @RequestPart("file") MultipartFile file) {
+
+        return documentService.savePdf(file);
     }
 }
