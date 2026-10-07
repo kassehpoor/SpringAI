@@ -31,9 +31,6 @@ import spring.ai.example.spring_ai_demo.service.v7.InsuranceRagService;
 
 
 
-
-
-
 /**
  {
  "question": "شرایط بازنشستگی بیمه شده چیست؟",
@@ -101,4 +98,34 @@ public class InsuranceRagController {
  با استفاده از اسناد مرتبط، پاسخ سؤال من چیست؟
 
  این همان R در RAG = Retrieval و G در RAG = Generation است.
+ */
+
+
+/**
+ ┌─────────────────┐
+ │     Question    │
+ └────────┬────────┘
+ ↓
+ ┌─────────────────┐
+ │    Embedding    │
+ │ nomic-embed-text│
+ └────────┬────────┘
+ ↓
+ ┌─────────────────┐
+ │    pgvector     │
+ │ cosine distance │
+ └────────┬────────┘
+ ↓
+ Top K results
+ ↓
+ ┌─────────────────┐
+ │     Context     │
+ └────────┬────────┘
+ ↓
+ ┌─────────────────┐
+ │    llama3.2     │
+ │   Generation    │
+ └────────┬────────┘
+ ↓
+ Answer
  */
