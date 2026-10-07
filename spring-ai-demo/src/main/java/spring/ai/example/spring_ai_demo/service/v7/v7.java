@@ -1,0 +1,82 @@
+package spring.ai.example.spring_ai_demo.service.v7;
+
+/**
+ * @author Tahereh Kasehpoor
+ */
+public class v7 {
+}
+
+
+/** v6
+ Question
+ ↓
+ Embedding
+ ↓
+ Vector Search
+ ↓
+ Documents
+
+
+ V6 به تو می‌گوید:
+ Document 1
+ distance = 0.0903
+
+ Document 2
+ distance = 0.1476
+
+ Document 6
+ distance = 0.1840
+ */
+
+
+
+
+
+/** v7
+ Question
+ ↓
+ Embedding
+ ↓
+ Vector Search
+ ↓
+ Relevant Documents
+ ↓
+ Context
+ ↓
+ LLM
+ ↓
+ Answer
+
+
+
+
+ اما V7 باید از این اطلاعات استفاده کند:
+ Context:
+
+ شرایط بازنشستگی بیمه شده بر اساس سن و سابقه پرداخت حق بیمه تعیین می‌شود...
+
+ شده برای شود. بیمهشده بر اساس مقررات مربوط به سن و سابقه پرداخت حق بیمه...
+
+
+
+
+
+ و بعد به llama3.2 بگوید:
+ با استفاده از Context زیر به سؤال کاربر پاسخ بده.
+
+ Context:
+ ...
+
+ Question:
+ شرایط بازنشستگی بیمه شده چیست؟
+
+
+
+
+
+ LLM مثلاً پاسخ می‌دهد:
+
+ شرایط بازنشستگی بر اساس سن و سابقه پرداخت حق بیمه تعیین می‌شود. همچنین بیمه‌شده باید حداقل سابقه لازم و شرایط سنی و قانونی مربوط به بازنشستگی را احراز کند.
+
+ این دیگر RAG است.
+ */
