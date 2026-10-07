@@ -5,14 +5,18 @@ spring:
   application:
     name: spring-ai-demo
 
+  datasource:
+    url: jdbc:postgresql://localhost:5432/spring_ai
+    username: springai
+    password: ${DB_PASSWORD:springai123}
+    driver-class-name: org.postgresql.Driver
+
   ai:
     ollama:
       base-url: http://localhost:11434
-
       chat:
         options:
           model: llama3.2
-
       embedding:
         options:
           model: nomic-embed-text

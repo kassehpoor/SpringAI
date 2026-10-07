@@ -85,6 +85,12 @@ public class TextSimilarityServiceImpl
     }
 }
 
+/**
+ *
+ * تا اینجا ثابت کردیم که pgvector می‌تواند بردارها را ذخیره کند و بر اساس فاصله‌ی کسینوسی مرتب کند. حالا می‌خواهیم همین کار را با embedding واقعی مدل nomic-embed-text انجام بدهیم.
+ */
+
+
 
 /**
  V5

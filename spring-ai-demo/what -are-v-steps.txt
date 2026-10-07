@@ -136,7 +136,13 @@ PostgreSQL + pgvector
  ↓
 Vector Similarity Search
 
-https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+docker info
+docker pull pgvector/pgvector:pg18
+docker compose up -d
+docker ps
+docker exec -it spring-ai-postgres psql -U springai -d spring_ai
+
 ---------------------------------
 V7
 RAG (Retrieval Augmented Generation)
