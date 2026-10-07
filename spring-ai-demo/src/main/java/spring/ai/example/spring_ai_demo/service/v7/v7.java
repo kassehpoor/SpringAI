@@ -7,6 +7,23 @@ public class v7 {
 }
 
 
+/**
+ *
+ * پس در V7 اول RAG را با همین معماری خودمان می‌سازیم:
+ *
+ * JdbcTemplate
+ *      +
+ * pgvector
+ *      +
+ * EmbeddingModel
+ *      +
+ * ChatClient
+ *
+ * بعد که مفهوم RAG کاملاً جا افتاد، می‌توانیم ببینیم Spring AI PgVectorStore چطور همین کار را abstraction می‌کند.
+ */
+
+
+
 /** v6
  Question
  ↓
