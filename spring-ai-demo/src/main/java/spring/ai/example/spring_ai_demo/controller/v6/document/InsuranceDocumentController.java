@@ -22,6 +22,22 @@ public class InsuranceDocumentController {
 
     private final InsuranceDocumentService documentService;
 
+
+    /**
+     {
+     "content": "شرایط بازنشستگی بیمه شده بر اساس سن و سابقه پرداخت حق بیمه تعیین می‌شود."
+     }
+     */
+
+
+    /**
+     {
+     "content": "بیمه شده برای دریافت مستمری بازنشستگی باید شرایط قانونی مربوط به سن و سابقه را داشته باشد."
+     }
+     */
+
+    //V6.2 — جست‌وجوی اسناد مشابه با pgvector از طریق Spring Boot خواهد بود
+
     @PostMapping
     public InsuranceDocumentResponseDTO save(
              @RequestBody InsuranceDocumentRequestDTO request) {
