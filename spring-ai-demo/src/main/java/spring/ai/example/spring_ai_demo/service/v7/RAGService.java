@@ -3,7 +3,24 @@ package spring.ai.example.spring_ai_demo.service.v7;
 /**
  * @author Tahereh Kasehpoor
  */
-public class v7 {
+
+
+/** RAGService
+ * Question
+ *    ↓
+ * Embedding
+ *    ↓
+ * Search PostgreSQL
+ *    ↓
+ * Take Top K content
+ *    ↓
+ * Build Context
+ *    ↓
+ * Send Context + Question to ChatClient
+ *    ↓
+ * Answer
+ */
+public class RAGService {
 }
 
 
