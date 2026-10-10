@@ -13,7 +13,19 @@ import spring.ai.example.spring_ai_demo.service.v7.PdfChunkService;
  * @author Tahereh Kasehpoor
  */
 
-
+/**
+ * PDF
+ *  ↓
+ * PDFBox
+ *  ↓
+ * Document
+ *  ↓
+ * Chunking       ← الان اینجاییم
+ *  ↓
+ * Embedding هر Chunk
+ *  ↓
+ * PostgreSQL + pgvector
+ */
 @RestController
 @RequestMapping("/api/v7/chunk")
 @RequiredArgsConstructor
@@ -30,3 +42,19 @@ public class PdfChunkController {
         return pdfChunkService.chunk(file);
     }
 }
+/**
+ و سپس:
+
+ Question
+ ↓
+ Embedding
+ ↓
+ Search روی Chunkها
+ ↓
+ Top K Chunks
+ ↓
+ Context
+ ↓
+ LLM
+ */
+
