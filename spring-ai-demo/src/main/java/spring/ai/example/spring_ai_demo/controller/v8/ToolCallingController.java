@@ -20,6 +20,11 @@ public class ToolCallingController {
         this.toolCallingService = toolCallingService;
     }
 
+    /**
+     تفاوت V7 و V8: در V7 خودمان مستقیماً جست‌وجو را اجرا می‌کردیم؛ در V8 مدل می‌تواند تشخیص دهد چه زمانی باید ابزار جست‌وجو را فراخوانی کند.
+     */
+
+
     @PostMapping("/ask")
     public ToolCallingResponseDTO ask(@RequestBody Request request) {
 
