@@ -36,3 +36,17 @@ public class ToolCallingController {
     public record Request(String question) {
     }
 }
+
+
+/**
+ {
+ "question": "حداقل سابقه قانونی بازنشستگی چند سال است؟"
+ }
+ */
+
+
+/**
+ {
+ "question": "شرایط بازنشستگی بیمه‌شده چیست؟"
+ }
+ */
