@@ -29,5 +29,5 @@ public class InsuranceRagRequestDTO {
     private String question;
 
     @Min(value = 1, message = "Top K must be at least 1")
-    private int topK;
+    private Integer topK;
 }

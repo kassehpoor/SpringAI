@@ -1,3 +1,4 @@
+
 package spring.ai.example.spring_ai_demo.service.v7.impl;
 
 import lombok.RequiredArgsConstructor;
@@ -5,43 +6,62 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import spring.ai.example.spring_ai_demo.dto.v6.document.InsuranceDocumentSearchResultDTO;
 import spring.ai.example.spring_ai_demo.dto.v7.InsuranceRagRequestDTO;
 import spring.ai.example.spring_ai_demo.dto.v7.InsuranceRagResponseDTO;
+import spring.ai.example.spring_ai_demo.dto.v7.InsuranceRagSourceDTO;
 import spring.ai.example.spring_ai_demo.service.v7.InsuranceRagService;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * @author Tahereh Kasehpoor
- */
 @Service
 @RequiredArgsConstructor
 public class InsuranceRagServiceImpl
         implements InsuranceRagService {
 
+    private static final int EMBEDDING_DIMENSIONS = 768;
+    private static final int MAX_TOP_K = 20;
+
     private final EmbeddingModel embeddingModel;
-
     private final JdbcTemplate jdbcTemplate;
-
     private final ChatClient chatClient;
 
     @Override
     public InsuranceRagResponseDTO ask(
             InsuranceRagRequestDTO request) {
 
-        String question =
-                request.getQuestion().trim();
+        // 1. Validate request
+        if (request == null
+                || request.getQuestion() == null
+                || request.getQuestion().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Question must not be empty"
+            );
+        }
 
-        // 1. Create embedding for user question
+        String question = request.getQuestion().trim();
+
+        int topK = request.getTopK() == null
+                ? 5
+                : request.getTopK();
+
+        if (topK < 1 || topK > MAX_TOP_K) {
+            throw new IllegalArgumentException(
+                    "topK must be between 1 and "
+                            + MAX_TOP_K
+            );
+        }
+
+        // 2. Create embedding for the question
         float[] queryEmbedding =
                 embeddingModel.embed(question);
 
-        if (queryEmbedding.length != 768) {
+        if (queryEmbedding.length != EMBEDDING_DIMENSIONS) {
             throw new IllegalStateException(
-                    "Expected 768 dimensions, but received "
+                    "Expected "
+                            + EMBEDDING_DIMENSIONS
+                            + " embedding dimensions, but received "
                             + queryEmbedding.length
             );
         }
@@ -49,196 +69,122 @@ public class InsuranceRagServiceImpl
         String vectorText =
                 Arrays.toString(queryEmbedding);
 
-        // 2. Search relevant documents
+        // 3. Search relevant chunks
         String sql = """
+                WITH query_vector AS (
+                    SELECT CAST(? AS vector) AS embedding
+                )
                 SELECT
-                    id,
-                    content,
-                    embedding <=> CAST(? AS vector) AS distance
-                FROM insurance_document
-                ORDER BY embedding <=> CAST(? AS vector)
+                    d.id AS document_id,
+                    d.file_name,
+                    c.chunk_index,
+                    c.content,
+                    c.page_number,
+                    c.embedding <=> q.embedding AS distance
+                FROM insurance_document_chunk c
+                JOIN insurance_document d
+                    ON d.id = c.document_id
+                CROSS JOIN query_vector q
+                ORDER BY c.embedding <=> q.embedding
                 LIMIT ?
                 """;
 
-        List<InsuranceDocumentSearchResultDTO> results =
+        List<InsuranceRagSourceDTO> sources =
                 jdbcTemplate.query(
                         sql,
-                        (rs, rowNum) ->
-                                InsuranceDocumentSearchResultDTO.builder()
-                                        .id(rs.getLong("id"))
-                                        .content(rs.getString("content"))
-                                        .distance(rs.getDouble("distance"))
-                                        .build(),
+                        (rs, rowNum) -> {
+                            double distance =
+                                    rs.getDouble("distance");
+
+                            return InsuranceRagSourceDTO.builder()
+                                    .documentId(
+                                            rs.getLong("document_id")
+                                    )
+                                    .fileName(
+                                            rs.getString("file_name")
+                                    )
+                                    .chunkIndex(
+                                            rs.getInt("chunk_index")
+                                    )
+                                    .content(
+                                            rs.getString("content")
+                                    )
+                                    .pageNumber(
+                                            rs.getObject(
+                                                    "page_number",
+                                                    Integer.class
+                                            )
+                                    )
+                                    .distance(distance)
+                                    .cosineSimilarity(
+                                            1.0 - distance
+                                    )
+                                    .build();
+                        },
                         vectorText,
-                        vectorText,
-                        request.getTopK()
+                        topK
                 );
 
-        // 3. Build context
-        String context =
-                results.stream()
-                        .map(InsuranceDocumentSearchResultDTO::getContent)
-                        .collect(Collectors.joining("\n\n"));
+        // 4. Handle the case where no chunks exist
+        if (sources.isEmpty()) {
+            return InsuranceRagResponseDTO.builder()
+                    .question(question)
+                    .answer(
+                            "در اسناد موجود، اطلاعاتی برای پاسخ "
+                                    + "به این سؤال پیدا نشد."
+                    )
+                    .sources(sources)
+                    .build();
+        }
 
-        // 4. Build prompt
+        // 5. Build context with source identifiers
+        String context = sources.stream()
+                .map(source -> """
+                        [منبع: %s، شناسه سند: %d، شماره قطعه: %d]
+                        %s
+                        """.formatted(
+                        source.getFileName(),
+                        source.getDocumentId(),
+                        source.getChunkIndex(),
+                        source.getContent()
+                ))
+                .collect(Collectors.joining("\n\n"));
 
-
+        // 6. Build a grounded prompt
         String prompt = """
                 شما یک دستیار هوشمند حوزه بیمه هستید.
 
-                فقط بر اساس اطلاعات موجود در Context
-                به سؤال کاربر پاسخ بده.
+                دستورالعمل‌ها:
+                - فقط بر اساس محتوای منابع زیر پاسخ بده.
+                - اطلاعاتی را که در منابع وجود ندارند، حدس نزن.
+                - اگر منابع برای پاسخ کافی نیستند، صریحاً اعلام کن.
+                - بین اطلاعات صریح منبع و برداشت احتمالی تفاوت بگذار.
+                - پاسخ را به زبان فارسی و روشن ارائه کن.
+                - شناسه یا نام منبعی را که در منابع زیر وجود ندارد
+                  جعل نکن.
 
-                اگر پاسخ سؤال در Context وجود ندارد،
-                صادقانه بگو که اطلاعات کافی در اسناد موجود نیست.
-
-                Context:
+                منابع:
                 %s
 
-                Question:
+                پرسش کاربر:
                 %s
                 """.formatted(context, question);
 
-        // 5. Ask LLM
-        String answer =
-                chatClient
-                        .prompt(prompt)
-                        .call()
-                        .content();
+        // 7. Ask the LLM
+        String answer = chatClient
+                .prompt(prompt)
+                .call()
+                .content();
 
-        // 6. Return answer + sources
+        if (answer == null || answer.isBlank()) {
+            answer = "مدل نتوانست پاسخ متنی تولید کند.";
+        }
 
-        /**
-         *
-         * Retrieved Knowledge
-         *         +
-         * LLM
-         *         =
-         * RAG Answer
-         */
+        // 8. Return answer and retrieved sources
         return InsuranceRagResponseDTO.builder()
                 .question(question)
                 .answer(answer)
-                .sources(results)
+                .sources(sources)
                 .build();
     }
 }
-
-
-
-/** RAGService
- * Question
- *    ↓
- * Embedding
- *    ↓
- * Search PostgreSQL
- *    ↓
- * Take Top K content
- *    ↓
- * Build Context
- *    ↓
- * Send Context + Question to ChatClient
- *    ↓
- * Answer
- */
-
-/**
- *
- * service
- *  ├── InsuranceDocumentService
- *  ├── InsuranceDocumentSearchService
- *  │
- *  └── InsuranceRagService
- */
-
-
-/**
- *
- * پس در V7 اول RAG را با همین معماری خودمان می‌سازیم:
- *
- * JdbcTemplate
- *      +
- * pgvector
- *      +
- * EmbeddingModel
- *      +
- * ChatClient
- *
- * بعد که مفهوم RAG کاملاً جا افتاد، می‌توانیم ببینیم Spring AI PgVectorStore چطور همین کار را abstraction می‌کند.
- */
-
-
-
-/** v6
- Question
- ↓
- Embedding
- ↓
- Vector Search
- ↓
- Documents
-
-
- V6 به تو می‌گوید:
- Document 1
- distance = 0.0903
-
- Document 2
- distance = 0.1476
-
- Document 6
- distance = 0.1840
- */
-
-
-
-
-
-/** v7
- Question
- ↓
- Embedding
- ↓
- Vector Search
- ↓
- Relevant Documents
- ↓
- Context
- ↓
- LLM
- ↓
- Answer
-
-
-
-
- اما V7 باید از این اطلاعات استفاده کند:
- Context:
-
- شرایط بازنشستگی بیمه شده بر اساس سن و سابقه پرداخت حق بیمه تعیین می‌شود...
-
- شده برای شود. بیمهشده بر اساس مقررات مربوط به سن و سابقه پرداخت حق بیمه...
-
-
-
-
-
- و بعد به llama3.2 بگوید:
- با استفاده از Context زیر به سؤال کاربر پاسخ بده.
-
- Context:
- ...
-
- Question:
- شرایط بازنشستگی بیمه شده چیست؟
-
-
-
-
-
- LLM مثلاً پاسخ می‌دهد:
-
- شرایط بازنشستگی بر اساس سن و سابقه پرداخت حق بیمه تعیین می‌شود. همچنین بیمه‌شده باید حداقل سابقه لازم و شرایط سنی و قانونی مربوط به بازنشستگی را احراز کند.
-
- این دیگر RAG است.
- */

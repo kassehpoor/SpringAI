@@ -44,7 +44,13 @@ public class PdfParserServiceImpl implements PdfParserService {
 
             PDFTextStripper stripper = new PDFTextStripper();
 
+            stripper.setSortByPosition(true);
+            stripper.setShouldSeparateByBeads(false);
+
             String text = stripper.getText(document);
+            System.out.println("========== EXTRACTED PDF TEXT ==========");
+            System.out.println(text);
+            System.out.println("========== END EXTRACTED TEXT ==========");
 
             return PdfParseResultDTO.builder()
                     .pageCount(document.getNumberOfPages())

@@ -31,6 +31,15 @@ public class ChunkSearchController {
     public List<ChunkSearchResultDTO> search(
             @RequestBody ChunkSearchRequestDTO request) {
 
+        System.out.println("===== CHUNK SEARCH REQUEST =====");
+        System.out.println("Request is null: " + (request == null));
+
+        if (request != null) {
+            System.out.println("Query: [" + request.getQuery() + "]");
+            System.out.println("TopK: " + request.getTopK());
+        }
+
+
         return chunkSearchService.search(request);
     }
 }
