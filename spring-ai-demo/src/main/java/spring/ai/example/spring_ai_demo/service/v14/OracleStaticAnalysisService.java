@@ -30,8 +30,16 @@ public class OracleStaticAnalysisService {
     private record Rule(String category, Pattern pattern) {}
 
     private static final List<Rule> RULES = List.of(
+//
+//            new Rule("SELECT_FROM", Pattern.compile(
+//                    "\\bFROM\\s+([A-Za-z_$][\\w$#.]*)",
+//                    Pattern.CASE_INSENSITIVE)),
+
+            //نمونه مشخص service. را فیلتر می‌کند
             new Rule("SELECT_FROM", Pattern.compile(
-                    "\\bFROM\\s+([A-Za-z_$][\\w$#.]*)",
+                    "\\bFROM\\s+(?!service\\b|response\\b|request\\b|exception\\b)"
+                            + "([A-Za-z_$][\\w$#]*(?:\\.[A-Za-z_$][\\w$#]*)?)"
+                            + "(?=\\s|,|;|\\)|$)",
                     Pattern.CASE_INSENSITIVE)),
             new Rule("JOIN", Pattern.compile(
                     "\\bJOIN\\s+([A-Za-z_$][\\w$#.]*)",
