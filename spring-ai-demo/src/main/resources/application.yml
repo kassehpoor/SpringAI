@@ -5,6 +5,11 @@ spring:
   application:
     name: spring-ai-demo
 
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+
   datasource:
     url: jdbc:postgresql://localhost:5432/spring_ai
     username: springai
