@@ -7,7 +7,9 @@ import spring.ai.example.spring_ai_demo.dto.v7.ChunkSearchResultDTO;
 import spring.ai.example.spring_ai_demo.service.v7.ChunkSearchService;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 /**
  * @author Tahereh Kasehpoor
@@ -15,8 +17,17 @@ import java.util.stream.Collectors;
 
 //این نسخه از همان ChunkSearchService مرحله V7 استفاده می‌کند؛ بنابراین لازم نیست جست‌وجوی pgvector را دوباره پیاده‌سازی کنیم.
 
+
+
 @Service
 public class InsuranceAgentService {
+
+    private static final String INSUFFICIENT_INFORMATION =
+            "اطلاعات کافی برای پاسخ دقیق به این سؤال در اسناد موجود نیست.";
+
+    private static final Pattern NUMBER_WITH_UNIT = Pattern.compile(
+            "[0-9۰-۹]+\\s*(سال|ماه|روز|درصد|ریال|تومان)"
+    );
 
     private final ChatClient chatClient;
     private final ChunkSearchService chunkSearchService;
@@ -29,9 +40,11 @@ public class InsuranceAgentService {
     }
 
     public String ask(String question) {
+
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException(
-                    "Question must not be blank");
+                    "Question must not be blank"
+            );
         }
 
         ChunkSearchRequestDTO request =
@@ -44,7 +57,14 @@ public class InsuranceAgentService {
                 chunkSearchService.search(request);
 
         if (results == null || results.isEmpty()) {
-            return "اطلاعات مرتبطی در اسناد موجود پیدا نشد.";
+            return INSUFFICIENT_INFORMATION;
+        }
+
+        // کنترل قطعی اولیه برای سؤال‌هایی که پاسخ عددی می‌خواهند
+        if (requiresNumericEvidence(question)
+                && !hasRelevantNumericEvidence(results)) {
+
+            return INSUFFICIENT_INFORMATION;
         }
 
         String context = results.stream()
@@ -58,16 +78,14 @@ public class InsuranceAgentService {
                         result.getContent()))
                 .collect(Collectors.joining("\n---\n"));
 
-        return chatClient.prompt()
+        String answer = chatClient.prompt()
                 .system("""
                         تو دستیار مهندسی دانش بیمه و مستمری هستی.
 
                         فقط بر اساس متن منابع ارائه‌شده پاسخ بده.
-                        قوانین، اعداد و شرایطی را که در منابع نیست
-                        حدس نزن.
-                        اگر منابع برای پاسخ کافی نیستند،
-                        این محدودیت را صریح اعلام کن.
-                        نام فایل منبع را ذکر کن.
+                        قوانین، اعداد و شرایطی را که در منابع نیستند حدس نزن.
+                        اگر منابع برای پاسخ کافی نیستند، صریحاً اعلام کن.
+                        نام فایل منبع را در پاسخ ذکر کن.
                         پاسخ را به زبان فارسی بده.
                         """)
                 .user("""
@@ -79,6 +97,42 @@ public class InsuranceAgentService {
                         """.formatted(question.trim(), context))
                 .call()
                 .content();
+
+        if (answer == null || answer.isBlank()) {
+            return INSUFFICIENT_INFORMATION;
+        }
+
+        return answer.trim();
+    }
+
+    private boolean requiresNumericEvidence(String question) {
+
+        String normalizedQuestion = question
+                .replace('ي', 'ی')
+                .replace('ك', 'ک');
+
+        return normalizedQuestion.matches(
+                "(?s).*(چند\\s*(سال|ماه|روز|درصد|ریال|تومان)|"
+                        + "چه\\s*(میزان|مقدار)|"
+                        + "حداقل\\s*(سن|سابقه)|"
+                        + "حداکثر\\s*(سن|سابقه)|"
+                        + "چقدر|چه\\s*مدت).*"
+        );
+    }
+
+    private boolean hasRelevantNumericEvidence(
+            List<ChunkSearchResultDTO> results) {
+
+        return results.stream()
+                .filter(result -> result.getContent() != null)
+                .anyMatch(result -> {
+                    String content = result.getContent()
+                            .replace('ي', 'ی')
+                            .replace('ك', 'ک');
+
+                    // عدد باید در متن مرتبط با بازنشستگی باشد
+                    return content.contains("بازنشستگی")
+                            && NUMBER_WITH_UNIT.matcher(content).find();
+                });
     }
 }
-
