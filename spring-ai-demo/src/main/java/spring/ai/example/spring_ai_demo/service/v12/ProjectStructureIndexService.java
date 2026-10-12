@@ -1,9 +1,9 @@
+
 package spring.ai.example.spring_ai_demo.service.v12;
 
 /**
  * @author Tahereh Kasehpoor
  */
-
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
@@ -16,8 +16,10 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
 import spring.ai.example.spring_ai_demo.dto.v12.ProjectIndexResponse;
 
 import java.io.ByteArrayOutputStream;
@@ -25,7 +27,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -74,6 +76,9 @@ public class ProjectStructureIndexService {
         Map<String, ClassInfo> classes = new LinkedHashMap<>();
         List<MethodCallInfo> calls = new ArrayList<>();
         List<String> errors = new ArrayList<>();
+
+        // V14: نگهداری متن کامل فایل‌های Java برای تحلیل SQL و Oracle
+        Map<String, String> sourceFiles = new LinkedHashMap<>();
 
         int javaFileCount = 0;
         int parsedFileCount = 0;
@@ -130,6 +135,10 @@ public class ProjectStructureIndexService {
                         StandardCharsets.UTF_8
                 );
 
+                // متن را حتی در صورت شکست Parse نگه می‌داریم
+                // تا V14 بتواند SQLهای فایل را نیز بررسی کند.
+                sourceFiles.put(path, source);
+
                 try {
                     ParseResult<CompilationUnit> parsed =
                             parser.parse(source);
@@ -155,12 +164,14 @@ public class ProjectStructureIndexService {
                                     + (i.isAsterisk() ? ".*" : ""))
                             .toList();
 
-                    List<TypeDeclaration<?>> types =
-                            unit.getTypes();
+                    List<TypeDeclaration<?>> types = unit.getTypes();
 
                     for (TypeDeclaration<?> type : types) {
                         ClassInfo info = toClassInfo(
-                                path, packageName, imports, type
+                                path,
+                                packageName,
+                                imports,
+                                type
                         );
 
                         classes.put(info.qualifiedName(), info);
@@ -176,7 +187,10 @@ public class ProjectStructureIndexService {
                                 call.findAncestor(TypeDeclaration.class);
 
                         String sourceClass = enclosingType
-                                .map(t -> qualifiedName(packageName, t.getNameAsString()))
+                                .map(t -> qualifiedName(
+                                        packageName,
+                                        t.getNameAsString()
+                                ))
                                 .orElse("");
 
                         String sourceMethod = enclosingMethod
@@ -217,14 +231,16 @@ public class ProjectStructureIndexService {
                 .sum();
 
         String projectName = originalName.substring(
-                0, originalName.length() - ".zip".length()
+                0,
+                originalName.length() - ".zip".length()
         );
 
         currentIndex = new ProjectIndex(
                 projectName,
                 classes,
                 calls,
-                errors
+                errors,
+                sourceFiles
         );
 
         return new ProjectIndexResponse(
@@ -235,7 +251,7 @@ public class ProjectStructureIndexService {
                 methodCount,
                 calls.size(),
                 failedFileCount,
-                "نمایه ساختاری در حافظه ساخته شد."
+                "نمایه ساختاری و متن فایل‌های Java در حافظه ذخیره شد."
         );
     }
 
@@ -256,10 +272,13 @@ public class ProjectStructureIndexService {
 
             declaration.getImplementedTypes()
                     .forEach(t -> inheritance.add("implements " + t));
+
         } else if (type instanceof EnumDeclaration) {
             kind = "ENUM";
+
         } else if (type instanceof RecordDeclaration) {
             kind = "RECORD";
+
         } else if (type instanceof AnnotationDeclaration) {
             kind = "ANNOTATION";
         }
@@ -271,7 +290,8 @@ public class ProjectStructureIndexService {
                 .toList();
 
         String qualifiedName = qualifiedName(
-                packageName, type.getNameAsString()
+                packageName,
+                type.getNameAsString()
         );
 
         return new ClassInfo(
@@ -286,14 +306,18 @@ public class ProjectStructureIndexService {
         );
     }
 
-    private String qualifiedName(String packageName, String typeName) {
+    private String qualifiedName(
+            String packageName,
+            String typeName) {
+
         return packageName == null || packageName.isBlank()
                 ? typeName
                 : packageName + "." + typeName;
     }
 
-    private byte[] readEntry(InputStream input, int maxBytes)
-            throws IOException {
+    private byte[] readEntry(
+            InputStream input,
+            int maxBytes) throws IOException {
 
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
@@ -305,6 +329,7 @@ public class ProjectStructureIndexService {
                         "یک فایل Java از حد مجاز بزرگ‌تر است."
                 );
             }
+
             output.write(buffer, 0, count);
         }
 
@@ -324,8 +349,7 @@ public class ProjectStructureIndexService {
             List<String> imports,
             List<String> inheritance,
             List<String> methods
-    ) {
-    }
+    ) {}
 
     public record MethodCallInfo(
             String path,
@@ -334,14 +358,13 @@ public class ProjectStructureIndexService {
             String methodName,
             String scope,
             int line
-    ) {
-    }
+    ) {}
 
     public record ProjectIndex(
             String projectName,
             Map<String, ClassInfo> classes,
             List<MethodCallInfo> calls,
-            List<String> errors
-    ) {
-    }
+            List<String> errors,
+            Map<String, String> sourceFiles
+    ) {}
 }
