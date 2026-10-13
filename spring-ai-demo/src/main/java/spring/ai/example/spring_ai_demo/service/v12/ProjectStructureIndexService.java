@@ -5,6 +5,7 @@ package spring.ai.example.spring_ai_demo.service.v12;
  * @author Tahereh Kasehpoor
  */
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
@@ -33,7 +34,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,6 +56,7 @@ public class ProjectStructureIndexService {
     private final Path currentProjectFile;
 
     private volatile ProjectIndex currentIndex;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ProjectStructureIndexService(
             ProjectIndexProperties properties) {
@@ -71,6 +72,14 @@ public class ProjectStructureIndexService {
                 .toAbsolutePath().normalize();
         this.projectsRoot = storageRoot.resolve("projects");
         this.currentProjectFile = storageRoot.resolve("current-project.txt");
+    }
+
+
+    private Path getIndexFile(String projectName) {
+        return storageRoot
+                .resolve("projects")
+                .resolve(projectName)
+                .resolve("index.json");
     }
 
     /**
@@ -95,17 +104,25 @@ public class ProjectStructureIndexService {
                 return;
             }
 
-            Path sourceDirectory = projectsRoot
-                    .resolve(projectName)
-                    .resolve("source")
-                    .normalize();
+            Path projectDirectory = projectsRoot.resolve(projectName)
+                    .toAbsolutePath().normalize();
+            Path normalizedProjectsRoot = projectsRoot.toAbsolutePath().normalize();
+            Path sourceDirectory = projectDirectory.resolve("source").normalize();
 
-            if (!sourceDirectory.startsWith(projectsRoot)
+            if (!projectDirectory.startsWith(normalizedProjectsRoot)
+                    || !sourceDirectory.startsWith(projectDirectory)
                     || !Files.isDirectory(sourceDirectory)) {
                 return;
             }
 
-            currentIndex = createIndex(projectName, sourceDirectory);
+            // ابتدا نمایه ذخیره‌شده را بارگذاری می‌کنیم؛ فقط اگر وجود نداشت، یک‌بار Parse می‌کنیم.
+            currentIndex = loadIndex(projectName);
+            if (currentIndex == null) {
+                currentIndex = createIndex(projectName, sourceDirectory);
+                saveIndex(currentIndex);
+            }
+
+            System.out.println("نمایه پروژه بازیابی شد: " + projectName);
 
         } catch (Exception exception) {
             // برنامه بالا می‌آید؛ در صورت خطا، ZIP دوباره قابل بارگذاری است.
@@ -226,6 +243,9 @@ public class ProjectStructureIndexService {
 
         ProjectIndex newIndex = createIndex(projectName, sourceDirectory);
 
+        // نمایه ساختاری را جداگانه ذخیره می‌کنیم تا در Restart دوباره Parse نشود.
+        saveIndex(newIndex);
+
         // نام پروژه فعال را ثبت می‌کنیم تا بعد از Restart بازیابی شود.
         Path temporaryMarker = storageRoot.resolve("current-project.tmp");
 
@@ -266,6 +286,94 @@ public class ProjectStructureIndexService {
                 newIndex.errors().size(),
                 "سورس‌ها روی دیسک ذخیره و نمایه ساختاری ساخته شد."
         );
+    }
+
+    private void saveIndex(ProjectIndex index) {
+        Path indexFile = getIndexFile(index.projectName());
+        Path temporaryFile = indexFile.resolveSibling("index.json.tmp");
+
+        try {
+            Files.createDirectories(indexFile.getParent());
+
+            ProjectIndexSnapshot snapshot = new ProjectIndexSnapshot(
+                    index.projectName(),
+                    index.classes(),
+                    index.calls(),
+                    index.errors(),
+                    index.sourceDirectory().toAbsolutePath().normalize().toString(),
+                    index.sourceFileCount(),
+                    index.parsedFileCount()
+            );
+
+            objectMapper.writerWithDefaultPrettyPrinter()
+                    .writeValue(temporaryFile.toFile(), snapshot);
+
+            try {
+                Files.move(
+                        temporaryFile,
+                        indexFile,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE
+                );
+            } catch (IOException atomicMoveException) {
+                Files.move(
+                        temporaryFile,
+                        indexFile,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            }
+        } catch (IOException exception) {
+            try {
+                Files.deleteIfExists(temporaryFile);
+            } catch (IOException ignored) {
+                // خطای اصلی ذخیره‌سازی مهم‌تر است.
+            }
+            throw new IllegalStateException("ذخیره نمایه ساختاری ناموفق بود.", exception);
+        }
+    }
+
+    private ProjectIndex loadIndex(String projectName) {
+        Path indexFile = getIndexFile(projectName);
+
+        if (!Files.isRegularFile(indexFile)) {
+            return null;
+        }
+
+        try {
+            ProjectIndexSnapshot snapshot = objectMapper.readValue(
+                    indexFile.toFile(), ProjectIndexSnapshot.class
+            );
+
+            if (!projectName.equals(snapshot.projectName())) {
+                throw new IOException("نام پروژه در فایل نمایه با نام پروژه فعال مطابقت ندارد.");
+            }
+
+            Path sourceDirectory = Path.of(snapshot.sourceDirectory())
+                    .toAbsolutePath().normalize();
+            Path normalizedProjectsRoot = projectsRoot.toAbsolutePath().normalize();
+            Path normalizedProjectDirectory = projectsRoot.resolve(projectName)
+                    .toAbsolutePath().normalize();
+
+            if (!sourceDirectory.startsWith(normalizedProjectDirectory)
+                    || !normalizedProjectDirectory.startsWith(normalizedProjectsRoot)
+                    || !Files.isDirectory(sourceDirectory)) {
+                throw new IOException("مسیر سورس در فایل نمایه معتبر نیست.");
+            }
+
+            return new ProjectIndex(
+                    snapshot.projectName(),
+                    snapshot.classes(),
+                    snapshot.calls(),
+                    snapshot.errors(),
+                    sourceDirectory,
+                    snapshot.sourceFileCount(),
+                    snapshot.parsedFileCount()
+            );
+        } catch (IOException | RuntimeException exception) {
+            // اگر JSON خراب باشد، restoreLastProject نمایه را از سورس بازسازی می‌کند.
+            System.err.println("بارگذاری index.json ناموفق بود: " + exception.getMessage());
+            return null;
+        }
     }
 
     private ProjectIndex createIndex(
@@ -512,6 +620,16 @@ public class ProjectStructureIndexService {
             String methodName,
             String scope,
             int line
+    ) {}
+
+    public record ProjectIndexSnapshot(
+            String projectName,
+            Map<String, ClassInfo> classes,
+            List<MethodCallInfo> calls,
+            List<String> errors,
+            String sourceDirectory,
+            int sourceFileCount,
+            int parsedFileCount
     ) {}
 
     public record ProjectIndex(
