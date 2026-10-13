@@ -25,3 +25,17 @@ spring:
       embedding:
         options:
           model: nomic-embed-text
+
+app:
+  project-index:
+    storage-dir: "D:/my-download-app/Spring-AI-Projects/analyticData/project-index"
+
+
+#  D:/my-download-app/Spring-AI-Projects/analyticData/project-index/
+#  ├── current-project.txt
+#  └── projects/
+#  └── j2ee-pension-proj/
+#  └── source/
+#  └── j2ee-pension-proj/
+#  └── ...
+#  └── RequestRESTService.java
