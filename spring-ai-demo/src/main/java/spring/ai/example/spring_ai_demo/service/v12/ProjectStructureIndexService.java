@@ -17,22 +17,29 @@ import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 
+import jakarta.annotation.PostConstruct;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import spring.ai.example.spring_ai_demo.config.ProjectIndexProperties;
 import spring.ai.example.spring_ai_demo.dto.v12.ProjectIndexResponse;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -44,10 +51,15 @@ public class ProjectStructureIndexService {
     private static final long MAX_TOTAL_BYTES = 100L * 1024 * 1024;
 
     private final JavaParser parser;
+    private final Path storageRoot;
+    private final Path projectsRoot;
+    private final Path currentProjectFile;
 
     private volatile ProjectIndex currentIndex;
 
-    public ProjectStructureIndexService() {
+    public ProjectStructureIndexService(
+            ProjectIndexProperties properties) {
+
         ParserConfiguration configuration =
                 new ParserConfiguration()
                         .setLanguageLevel(
@@ -55,6 +67,50 @@ public class ProjectStructureIndexService {
                         );
 
         this.parser = new JavaParser(configuration);
+        this.storageRoot = Path.of(properties.storageDir())
+                .toAbsolutePath().normalize();
+        this.projectsRoot = storageRoot.resolve("projects");
+        this.currentProjectFile = storageRoot.resolve("current-project.txt");
+    }
+
+    /**
+     * پس از بالا آمدن برنامه، نمایه آخرین پروژه را از دیسک بازیابی می‌کند.
+     */
+    @PostConstruct
+    public void restoreLastProject() {
+        try {
+            Files.createDirectories(projectsRoot);
+
+            if (!Files.exists(currentProjectFile)) {
+                return;
+            }
+
+            String projectName = Files.readString(
+                    currentProjectFile,
+                    StandardCharsets.UTF_8
+            ).trim();
+
+            if (projectName.isBlank()
+                    || !projectName.matches("[A-Za-z0-9._-]+")) {
+                return;
+            }
+
+            Path sourceDirectory = projectsRoot
+                    .resolve(projectName)
+                    .resolve("source")
+                    .normalize();
+
+            if (!sourceDirectory.startsWith(projectsRoot)
+                    || !Files.isDirectory(sourceDirectory)) {
+                return;
+            }
+
+            currentIndex = createIndex(projectName, sourceDirectory);
+
+        } catch (Exception exception) {
+            // برنامه بالا می‌آید؛ در صورت خطا، ZIP دوباره قابل بارگذاری است.
+            currentIndex = null;
+        }
     }
 
     public synchronized ProjectIndexResponse buildIndex(
@@ -73,18 +129,29 @@ public class ProjectStructureIndexService {
             );
         }
 
-        Map<String, ClassInfo> classes = new LinkedHashMap<>();
-        List<MethodCallInfo> calls = new ArrayList<>();
-        List<String> errors = new ArrayList<>();
+        String fileName = Path.of(originalName).getFileName().toString();
+        String projectName = fileName.substring(0, fileName.length() - 4)
+                .replaceAll("[^A-Za-z0-9._-]", "_");
 
-        // V14: نگهداری متن کامل فایل‌های Java برای تحلیل SQL و Oracle
-        Map<String, String> sourceFiles = new LinkedHashMap<>();
+        if (projectName.isBlank()) {
+            throw new IllegalArgumentException("نام پروژه معتبر نیست.");
+        }
 
-        int javaFileCount = 0;
-        int parsedFileCount = 0;
-        int failedFileCount = 0;
-        long totalBytes = 0;
+        Files.createDirectories(projectsRoot);
+
+        Path projectDirectory = projectsRoot.resolve(projectName).normalize();
+        Path sourceDirectory = projectDirectory.resolve("source").normalize();
+
+        if (!sourceDirectory.startsWith(projectsRoot)) {
+            throw new IllegalArgumentException("مسیر پروژه معتبر نیست.");
+        }
+
+        // سورس قبلی همین پروژه را جایگزین می‌کنیم.
+        deleteDirectory(projectDirectory);
+        Files.createDirectories(sourceDirectory);
+
         int entryCount = 0;
+        long totalBytes = 0;
 
         try (InputStream input = file.getInputStream();
              ZipInputStream zip = new ZipInputStream(input)) {
@@ -105,21 +172,19 @@ public class ProjectStructureIndexService {
                     continue;
                 }
 
-                String path = entry.getName().replace('\\', '/');
+                String entryName = entry.getName().replace('\\', '/');
 
-                if (path.startsWith("/")
-                        || path.matches("^[A-Za-z]:.*")
-                        || List.of(path.split("/")).contains("..")) {
+                if (entryName.startsWith("/")
+                        || entryName.matches("^[A-Za-z]:.*")
+                        || List.of(entryName.split("/")).contains("..")) {
                     zip.closeEntry();
                     continue;
                 }
 
-                if (!path.toLowerCase(Locale.ROOT).endsWith(".java")) {
+                if (!entryName.toLowerCase(Locale.ROOT).endsWith(".java")) {
                     zip.closeEntry();
                     continue;
                 }
-
-                javaFileCount++;
 
                 byte[] bytes = readEntry(zip, MAX_FILE_BYTES);
                 totalBytes += bytes.length;
@@ -130,24 +195,123 @@ public class ProjectStructureIndexService {
                     );
                 }
 
-                String source = new String(
-                        bytes,
-                        StandardCharsets.UTF_8
-                );
+                Path destination = sourceDirectory.resolve(entryName)
+                        .normalize();
 
-                // متن را حتی در صورت شکست Parse نگه می‌داریم
-                // تا V14 بتواند SQLهای فایل را نیز بررسی کند.
-                sourceFiles.put(path, source);
+                if (!destination.startsWith(sourceDirectory)) {
+                    zip.closeEntry();
+                    continue;
+                }
+
+                Files.createDirectories(destination.getParent());
+                Files.write(destination, bytes);
+
+                zip.closeEntry();
+            }
+
+        } catch (Exception exception) {
+            // از باقی ماندن پروژه ناقص به‌عنوان پروژه فعال جلوگیری می‌کنیم.
+            deleteDirectory(projectDirectory);
+
+            if (exception instanceof IOException ioException) {
+                throw ioException;
+            }
+
+            if (exception instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+
+            throw new IOException("خطا در ذخیره ZIP.", exception);
+        }
+
+        ProjectIndex newIndex = createIndex(projectName, sourceDirectory);
+
+        // نام پروژه فعال را ثبت می‌کنیم تا بعد از Restart بازیابی شود.
+        Path temporaryMarker = storageRoot.resolve("current-project.tmp");
+
+        Files.writeString(
+                temporaryMarker,
+                projectName,
+                StandardCharsets.UTF_8
+        );
+
+        try {
+            Files.move(
+                    temporaryMarker,
+                    currentProjectFile,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+            );
+        } catch (IOException exception) {
+            Files.move(
+                    temporaryMarker,
+                    currentProjectFile,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
+        }
+
+        currentIndex = newIndex;
+
+        int methodCount = newIndex.classes().values().stream()
+                .mapToInt(c -> c.methods().size())
+                .sum();
+
+        return new ProjectIndexResponse(
+                projectName,
+                newIndex.sourceFileCount(),
+                newIndex.parsedFileCount(),
+                newIndex.classes().size(),
+                methodCount,
+                newIndex.calls().size(),
+                newIndex.errors().size(),
+                "سورس‌ها روی دیسک ذخیره و نمایه ساختاری ساخته شد."
+        );
+    }
+
+    private ProjectIndex createIndex(
+            String projectName,
+            Path sourceDirectory) throws IOException {
+
+        Map<String, ClassInfo> classes = new LinkedHashMap<>();
+        List<MethodCallInfo> calls = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        int sourceFileCount = 0;
+        int parsedFileCount = 0;
+
+        try (Stream<Path> paths = Files.walk(sourceDirectory)) {
+            List<Path> javaFiles = paths
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString()
+                            .toLowerCase(Locale.ROOT).endsWith(".java"))
+                    .sorted()
+                    .toList();
+
+            sourceFileCount = javaFiles.size();
+
+            for (Path javaFile : javaFiles) {
+                String path = sourceDirectory.relativize(javaFile)
+                        .toString().replace('\\', '/');
 
                 try {
+                    long size = Files.size(javaFile);
+
+                    if (size > MAX_FILE_BYTES) {
+                        errors.add(path + ": فایل از حد مجاز بزرگ‌تر است.");
+                        continue;
+                    }
+
+                    String source = Files.readString(
+                            javaFile,
+                            StandardCharsets.UTF_8
+                    );
+
                     ParseResult<CompilationUnit> parsed =
                             parser.parse(source);
 
                     if (parsed.getResult().isEmpty()
                             || !parsed.getProblems().isEmpty()) {
-                        failedFileCount++;
                         errors.add(path + ": خطای parse");
-                        zip.closeEntry();
                         continue;
                     }
 
@@ -164,9 +328,7 @@ public class ProjectStructureIndexService {
                                     + (i.isAsterisk() ? ".*" : ""))
                             .toList();
 
-                    List<TypeDeclaration<?>> types = unit.getTypes();
-
-                    for (TypeDeclaration<?> type : types) {
+                    for (TypeDeclaration<?> type : unit.getTypes()) {
                         ClassInfo info = toClassInfo(
                                 path,
                                 packageName,
@@ -218,40 +380,19 @@ public class ProjectStructureIndexService {
                     parsedFileCount++;
 
                 } catch (RuntimeException exception) {
-                    failedFileCount++;
                     errors.add(path + ": خطای تحلیل ساختاری");
                 }
-
-                zip.closeEntry();
             }
         }
 
-        int methodCount = classes.values().stream()
-                .mapToInt(c -> c.methods().size())
-                .sum();
-
-        String projectName = originalName.substring(
-                0,
-                originalName.length() - ".zip".length()
-        );
-
-        currentIndex = new ProjectIndex(
+        return new ProjectIndex(
                 projectName,
                 classes,
                 calls,
                 errors,
-                sourceFiles
-        );
-
-        return new ProjectIndexResponse(
-                projectName,
-                javaFileCount,
-                parsedFileCount,
-                classes.size(),
-                methodCount,
-                calls.size(),
-                failedFileCount,
-                "نمایه ساختاری و متن فایل‌های Java در حافظه ذخیره شد."
+                sourceDirectory,
+                sourceFileCount,
+                parsedFileCount
         );
     }
 
@@ -336,6 +477,19 @@ public class ProjectStructureIndexService {
         return output.toByteArray();
     }
 
+    private void deleteDirectory(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+
+        try (Stream<Path> paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(
+                    java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
+    }
+
     public ProjectIndex getCurrentIndex() {
         return currentIndex;
     }
@@ -365,6 +519,8 @@ public class ProjectStructureIndexService {
             Map<String, ClassInfo> classes,
             List<MethodCallInfo> calls,
             List<String> errors,
-            Map<String, String> sourceFiles
+            Path sourceDirectory,
+            int sourceFileCount,
+            int parsedFileCount
     ) {}
 }
