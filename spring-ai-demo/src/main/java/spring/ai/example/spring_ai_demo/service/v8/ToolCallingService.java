@@ -1,7 +1,7 @@
 
 package spring.ai.example.spring_ai_demo.service.v8;
 
-// @author Tahereh Kasehpoor
+
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;

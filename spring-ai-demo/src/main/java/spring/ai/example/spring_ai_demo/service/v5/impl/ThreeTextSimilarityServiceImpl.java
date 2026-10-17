@@ -9,9 +9,7 @@ import spring.ai.example.spring_ai_demo.service.v5.CosineSimilarityService;
 import spring.ai.example.spring_ai_demo.service.v5.ThreeTextSimilarityService;
 
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 @Service
 @RequiredArgsConstructor

@@ -1,9 +1,5 @@
 package spring.ai.example.spring_ai_demo.dto.v7;
 
-/**
- * @author Tahereh Kasehpoor
- */
-
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

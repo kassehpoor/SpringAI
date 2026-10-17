@@ -12,10 +12,6 @@ import spring.ai.example.spring_ai_demo.service.v4.PdfParserService;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * @author Tahereh Kasehpoor
- */
-
 
 @Service
 @RequiredArgsConstructor

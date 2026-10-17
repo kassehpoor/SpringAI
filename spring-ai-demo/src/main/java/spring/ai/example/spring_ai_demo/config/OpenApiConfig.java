@@ -1,8 +1,5 @@
 package spring.ai.example.spring_ai_demo.config;
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 
 import io.swagger.v3.oas.models.OpenAPI;

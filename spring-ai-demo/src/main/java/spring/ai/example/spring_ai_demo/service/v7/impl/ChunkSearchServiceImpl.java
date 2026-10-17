@@ -1,8 +1,6 @@
 package spring.ai.example.spring_ai_demo.service.v7.impl;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 
 

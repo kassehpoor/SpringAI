@@ -1,8 +1,6 @@
 package spring.ai.example.spring_ai_demo.controller.v10;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 
 import org.springframework.http.HttpStatus;

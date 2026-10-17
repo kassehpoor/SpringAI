@@ -1,13 +1,5 @@
 package spring.ai.example.spring_ai_demo.service.v11;
 
-/**
- * @author Tahereh Kasehpoor
- */
-
-
-/**
- این نسخه اطلاعات ساختاری را استخراج می‌کند؛ هنوز گراف کامل وابستگی متدها، وراثت بین کلاس‌ها یا مسیرهای فراخوانی را محاسبه نمی‌کند. همچنین این محدودیت‌ها برای شروع مناسب‌اند، اما برای استفاده سازمانی باید مدیریت خطاها و محدودیت منابع را کامل‌تر کنیم.
- */
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
@@ -31,6 +23,11 @@ import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+
+
+/**
+ این نسخه اطلاعات ساختاری را استخراج می‌کند؛ هنوز گراف کامل وابستگی متدها، وراثت بین کلاس‌ها یا مسیرهای فراخوانی را محاسبه نمی‌کند. همچنین این محدودیت‌ها برای شروع مناسب‌اند، اما برای استفاده سازمانی باید مدیریت خطاها و محدودیت منابع را کامل‌تر کنیم.
+ */
 
 @Service
 public class ProjectZipAnalysisService {

@@ -9,9 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import spring.ai.example.spring_ai_demo.dto.v7.PdfChunkResponseDTO;
 import spring.ai.example.spring_ai_demo.service.v7.PdfChunkService;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 /**
  * PDF

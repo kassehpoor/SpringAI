@@ -15,9 +15,7 @@ import spring.ai.example.spring_ai_demo.service.v6.document.InsuranceDocumentSer
 
 import java.util.Arrays;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 @Service
 @RequiredArgsConstructor
 public class InsuranceDocumentServiceImpl

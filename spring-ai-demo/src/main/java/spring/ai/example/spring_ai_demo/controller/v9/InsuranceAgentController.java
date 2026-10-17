@@ -6,9 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import spring.ai.example.spring_ai_demo.service.v9.InsuranceAgentService;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 
 

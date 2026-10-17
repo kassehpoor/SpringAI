@@ -9,9 +9,7 @@ import spring.ai.example.spring_ai_demo.dto.v6.embeddingtext.SaveEmbeddingReques
 import spring.ai.example.spring_ai_demo.dto.v6.embeddingtext.SaveEmbeddingResponseDTO;
 import spring.ai.example.spring_ai_demo.service.v6.embeddingtext.EmbeddingStorageService;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 
 @Service

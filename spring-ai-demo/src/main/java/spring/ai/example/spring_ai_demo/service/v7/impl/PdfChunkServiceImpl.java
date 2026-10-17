@@ -11,9 +11,7 @@ import spring.ai.example.spring_ai_demo.service.v7.TextChunker;
 
 import java.util.List;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 @Service
 @RequiredArgsConstructor
 public class PdfChunkServiceImpl

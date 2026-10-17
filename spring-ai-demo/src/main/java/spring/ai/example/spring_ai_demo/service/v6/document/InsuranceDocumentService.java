@@ -5,9 +5,7 @@ import spring.ai.example.spring_ai_demo.dto.v6.document.InsuranceDocumentRequest
 import spring.ai.example.spring_ai_demo.dto.v6.document.InsuranceDocumentResponseDTO;
 import spring.ai.example.spring_ai_demo.dto.v6.document.PdfEmbeddingResponseDTO;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 public interface InsuranceDocumentService {
 
     InsuranceDocumentResponseDTO save(

@@ -1,8 +1,6 @@
 package spring.ai.example.spring_ai_demo.dto.v12;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 public record ProjectIndexResponse(
         String projectName,

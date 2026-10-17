@@ -1,8 +1,5 @@
 package spring.ai.example.spring_ai_demo.service.v10.tool;
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 
 import org.springframework.stereotype.Component;

@@ -5,9 +5,6 @@ import spring.ai.example.spring_ai_demo.service.v5.CosineSimilarityService;
 
 
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 @Service
 public class CosineSimilarityServiceImpl

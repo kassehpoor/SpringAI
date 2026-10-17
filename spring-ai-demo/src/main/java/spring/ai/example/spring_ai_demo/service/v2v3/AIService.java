@@ -4,9 +4,6 @@ import spring.ai.example.spring_ai_demo.dto.v2.AIRequestDTO;
 import spring.ai.example.spring_ai_demo.dto.v2.AIResponseDTO;
 import spring.ai.example.spring_ai_demo.dto.v3.InsuranceAnalysisDTO;
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 public interface AIService {
 

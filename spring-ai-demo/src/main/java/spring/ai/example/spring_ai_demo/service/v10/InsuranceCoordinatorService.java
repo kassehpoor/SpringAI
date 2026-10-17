@@ -1,8 +1,5 @@
 
 
-/**
- * @author Tahereh Kasehpoor
- */
 
         package spring.ai.example.spring_ai_demo.service.v10;
 

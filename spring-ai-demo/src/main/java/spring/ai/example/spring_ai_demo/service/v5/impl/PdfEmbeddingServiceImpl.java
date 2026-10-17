@@ -9,9 +9,7 @@ import spring.ai.example.spring_ai_demo.service.v4.PdfDocumentService;
 import spring.ai.example.spring_ai_demo.service.v5.PdfEmbeddingService;
 
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 @Service
 @RequiredArgsConstructor

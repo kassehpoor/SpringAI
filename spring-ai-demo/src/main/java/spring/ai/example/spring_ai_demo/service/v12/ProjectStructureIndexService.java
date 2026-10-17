@@ -1,9 +1,7 @@
 
 package spring.ai.example.spring_ai_demo.service.v12;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javaparser.JavaParser;

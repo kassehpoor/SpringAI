@@ -9,11 +9,9 @@ import spring.ai.example.spring_ai_demo.service.v7.ChunkSearchService;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.regex.Pattern;
 
-/**
- * @author Tahereh Kasehpoor
- */
+
+
 
 //این نسخه از همان ChunkSearchService مرحله V7 استفاده می‌کند؛ بنابراین لازم نیست جست‌وجوی pgvector را دوباره پیاده‌سازی کنیم.
 

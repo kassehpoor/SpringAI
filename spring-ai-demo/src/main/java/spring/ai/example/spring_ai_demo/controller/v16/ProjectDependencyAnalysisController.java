@@ -1,8 +1,5 @@
 package spring.ai.example.spring_ai_demo.controller.v16;
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 
 import org.springframework.web.bind.annotation.GetMapping;

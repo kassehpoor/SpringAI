@@ -1,10 +1,8 @@
+
 package spring.ai.example.spring_ai_demo.dto.v14;
 
-/**
- * @author Tahereh Kasehpoor
- */
-
 import java.util.List;
+
 
 public record OracleAnalysisResponse(
         String projectName,
@@ -18,6 +16,6 @@ public record OracleAnalysisResponse(
             String category,
             String objectName,
             String snippet
-    ) {}
+    ) {
+    }
 }
-
