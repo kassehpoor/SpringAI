@@ -5,10 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * @author Tahereh Kasehpoor
- */
-
 @Data
 @Builder
 @NoArgsConstructor

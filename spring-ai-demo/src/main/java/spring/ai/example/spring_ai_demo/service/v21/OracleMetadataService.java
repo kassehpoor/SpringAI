@@ -1,8 +1,5 @@
 package spring.ai.example.spring_ai_demo.service.v21;
 
-/**
- * @author Tahereh Kasehpoor
- */
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
