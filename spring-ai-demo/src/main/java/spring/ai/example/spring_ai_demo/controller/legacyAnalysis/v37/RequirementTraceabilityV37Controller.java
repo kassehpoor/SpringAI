@@ -18,6 +18,17 @@ public class RequirementTraceabilityV37Controller {
 
     private final RequirementTraceabilityV37Service traceabilityService;
 
+    /**
+     {
+     "requirement": "شرایط بازنشستگی بیمه شده چیست؟",
+     "schema": "CLSU_CANPEN",
+     "oracleObjectName": "LSU_REQ",
+     "oracleObjectType": "TABLE",
+     "maxDepth": 3,
+     "topK": 5
+     }
+
+     */
     @PostMapping
     public RequirementTraceabilityV37Response analyze(
             @Valid @RequestBody RequirementTraceabilityV37Request request)
