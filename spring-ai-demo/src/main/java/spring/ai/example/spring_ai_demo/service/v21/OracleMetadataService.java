@@ -189,6 +189,112 @@ public class OracleMetadataService {
         return value == null ? null : value.toString();
     }
 
+    public List<Map<String, Object>> listColumns(
+            String schema,
+            String tableName) {
+
+        String effectiveSchema = normalizeSchema(schema);
+        String table = requiredName(tableName, "tableName");
+
+        return jdbc.queryForList("""
+            SELECT
+                OWNER,
+                TABLE_NAME,
+                COLUMN_NAME,
+                DATA_TYPE,
+                DATA_LENGTH,
+                DATA_PRECISION,
+                DATA_SCALE,
+                NULLABLE,
+                COLUMN_ID
+            FROM ALL_TAB_COLUMNS
+            WHERE OWNER = ?
+              AND TABLE_NAME = ?
+            ORDER BY COLUMN_ID
+            FETCH FIRST %d ROWS ONLY
+            """.formatted(maxRows),
+                effectiveSchema,
+                table);
+    }
+
+    public List<Map<String, Object>> listConstraints(
+            String schema,
+            String tableName) {
+
+        String effectiveSchema = normalizeSchema(schema);
+        String table = requiredName(tableName, "tableName");
+
+        return jdbc.queryForList("""
+            SELECT
+                c.OWNER,
+                c.TABLE_NAME,
+                c.CONSTRAINT_NAME,
+                c.CONSTRAINT_TYPE,
+                cc.COLUMN_NAME,
+                cc.POSITION,
+                c.STATUS,
+                c.R_OWNER AS REFERENCED_OWNER,
+                rc.TABLE_NAME AS REFERENCED_TABLE,
+                rcc.COLUMN_NAME AS REFERENCED_COLUMN
+            FROM ALL_CONSTRAINTS c
+            LEFT JOIN ALL_CONS_COLUMNS cc
+                ON cc.OWNER = c.OWNER
+               AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME
+               AND cc.TABLE_NAME = c.TABLE_NAME
+            LEFT JOIN ALL_CONSTRAINTS rc
+                ON rc.OWNER = c.R_OWNER
+               AND rc.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME
+            LEFT JOIN ALL_CONS_COLUMNS rcc
+                ON rcc.OWNER = rc.OWNER
+               AND rcc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+               AND rcc.TABLE_NAME = rc.TABLE_NAME
+               AND rcc.POSITION = cc.POSITION
+            WHERE c.OWNER = ?
+              AND c.TABLE_NAME = ?
+              AND c.CONSTRAINT_TYPE IN ('P', 'R', 'U', 'C')
+            ORDER BY c.CONSTRAINT_NAME, cc.POSITION
+            FETCH FIRST %d ROWS ONLY
+            """.formatted(maxRows),
+                effectiveSchema,
+                table);
+    }
+
+    public List<Map<String, Object>> listForeignKeys(String schema) {
+
+        String effectiveSchema = normalizeSchema(schema);
+
+        return jdbc.queryForList("""
+            SELECT
+                fk.OWNER AS OWNER,
+                fk.TABLE_NAME AS TABLE_NAME,
+                fk.CONSTRAINT_NAME AS CONSTRAINT_NAME,
+                fkc.COLUMN_NAME AS COLUMN_NAME,
+                fkc.POSITION AS COLUMN_POSITION,
+                pk.OWNER AS REFERENCED_OWNER,
+                pk.TABLE_NAME AS REFERENCED_TABLE,
+                pkc.COLUMN_NAME AS REFERENCED_COLUMN,
+                fk.STATUS AS STATUS
+            FROM ALL_CONSTRAINTS fk
+            JOIN ALL_CONS_COLUMNS fkc
+              ON fkc.OWNER = fk.OWNER
+             AND fkc.CONSTRAINT_NAME = fk.CONSTRAINT_NAME
+             AND fkc.TABLE_NAME = fk.TABLE_NAME
+            JOIN ALL_CONSTRAINTS pk
+              ON pk.OWNER = fk.R_OWNER
+             AND pk.CONSTRAINT_NAME = fk.R_CONSTRAINT_NAME
+            JOIN ALL_CONS_COLUMNS pkc
+              ON pkc.OWNER = pk.OWNER
+             AND pkc.CONSTRAINT_NAME = pk.CONSTRAINT_NAME
+             AND pkc.TABLE_NAME = pk.TABLE_NAME
+             AND pkc.POSITION = fkc.POSITION
+            WHERE fk.OWNER = ?
+              AND fk.CONSTRAINT_TYPE = 'R'
+            ORDER BY fk.TABLE_NAME, fk.CONSTRAINT_NAME,
+                     fkc.POSITION
+            FETCH FIRST %d ROWS ONLY
+            """.formatted(maxRows), effectiveSchema);
+    }
+
     public record ConnectionStatus(
             boolean connected,
             String sessionUser,
