@@ -14,6 +14,8 @@ import spring.ai.example.spring_ai_demo.dto.legacyAnalysis.v38.RequirementAnalys
 import spring.ai.example.spring_ai_demo.repository.legacyAnalysis.v38.RequirementAnalysisRepository;
 import spring.ai.example.spring_ai_demo.service.v4.PdfDocumentService;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -419,5 +421,51 @@ public class RequirementAnalysisService {
             Long id,
             RequirementAnalysisDTO analysis,
             String analysisJson) {
+    }
+
+    @Transactional
+    public SavedRequirementAnalysis analyzeTextFile(MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("فایل متنی خالی است.");
+        }
+
+        String fileName = file.getOriginalFilename();
+
+        if (fileName == null
+                || !fileName.toLowerCase(java.util.Locale.ROOT)
+                .endsWith(".txt")) {
+            throw new IllegalArgumentException(
+                    "فقط فایل با پسوند txt پذیرفته می‌شود.");
+        }
+
+        // محدودیت مستقل برای جلوگیری از پردازش فایل بیش از حد بزرگ
+        if (file.getSize() > 2 * 1024 * 1024) {
+            throw new IllegalArgumentException(
+                    "حداکثر حجم فایل متنی 2 مگابایت است.");
+        }
+
+        final String text;
+
+        try {
+            text = new String(
+                    file.getBytes(),
+                    StandardCharsets.UTF_8
+            ).replaceFirst("^\\uFEFF", "").strip();
+        } catch (IOException ex) {
+            throw new IllegalStateException(
+                    "خواندن فایل متنی ناموفق بود.", ex);
+        }
+
+        if (text.isBlank()) {
+            throw new IllegalArgumentException(
+                    "فایل فاقد متن قابل تحلیل است.");
+        }
+
+        return analyzeAndSave(
+                fileName,
+                "TEXT: " + fileName,
+                text
+        );
     }
 }
