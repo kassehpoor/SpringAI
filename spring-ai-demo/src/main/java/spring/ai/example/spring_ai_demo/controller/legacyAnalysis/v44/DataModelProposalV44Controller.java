@@ -20,6 +20,9 @@ public class DataModelProposalV44Controller {
         this.service = service;
     }
 
+    /**
+     تولید و ذخیره مدل داده پیشنهادی
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> generate(
@@ -27,11 +30,17 @@ public class DataModelProposalV44Controller {
         return service.generate(request);
     }
 
+    /**
+     دریافت یک مدل ذخیره‌شده
+     */
     @GetMapping("/{id}")
     public Map<String, Object> get(@PathVariable Long id) {
         return service.getProposal(id);
     }
 
+    /**
+     مشاهده مدل‌های ذخیره‌شده برای تحلیل شماره
+     */
     @GetMapping
     public List<Map<String, Object>> list(
             @RequestParam Long analysisId) {

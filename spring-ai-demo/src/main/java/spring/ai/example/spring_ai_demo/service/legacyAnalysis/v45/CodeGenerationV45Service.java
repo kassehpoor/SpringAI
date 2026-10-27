@@ -3,6 +3,7 @@ package spring.ai.example.spring_ai_demo.service.legacyAnalysis.v45;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,11 +96,54 @@ public class CodeGenerationV45Service {
                 Use package subdirectories appropriate to each class.
                 """.formatted(modelName, packageName, proposalJson);
 
-        GeneratedCodeV45DTO generated = chatClient.prompt()
-                .system(systemPrompt)
+
+        String rawResponse = chatClient.prompt()
+                .system(systemPrompt + """
+
+        IMPORTANT OUTPUT RULES:
+        - Return exactly one valid JSON object.
+        - Do not include Markdown or explanations.
+        - Use exactly these JSON fields:
+          projectName, packageName, files, assumptions, reviewNotes.
+        - The files field must contain at least one Java file object.
+        - Each file object must have these fields:
+          path, fileName, type, content.
+        - Every file path must end with .java.
+        - Put the complete Java source code inside content.
+        - Use jakarta.validation, not javax.validation.
+        - Return valid JSON with properly escaped newlines and quotes.
+        """)
                 .user(userPrompt)
+                .options(OllamaOptions.builder()
+                        .format("json")
+                        .build())
                 .call()
-                .entity(GeneratedCodeV45DTO.class);
+                .content();
+
+        System.out.println("========== V45 RAW RESPONSE ==========");
+        System.out.println(rawResponse);
+        System.out.println("========== END V45 RAW RESPONSE ======");
+
+        GeneratedCodeV45DTO generated;
+
+        try {
+            generated = objectMapper.readValue(
+                    rawResponse,
+                    GeneratedCodeV45DTO.class
+            );
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                    "پاسخ Ollama یک JSON معتبر نیست. پاسخ خام: "
+                            + (rawResponse == null
+                            ? "null"
+                            : rawResponse.substring(
+                            0,
+                            Math.min(1500, rawResponse.length())
+                    )),
+                    e
+            );
+        }
+
 
         if (generated == null || generated.files() == null
                 || generated.files().isEmpty()) {
@@ -114,14 +158,32 @@ public class CodeGenerationV45Service {
 
         // کنترل حداقلی خروجی؛ هیچ فایل روی دیسک اجرا یا نوشته نمی‌شود.
         for (GeneratedCodeV45DTO.JavaFile file : generated.files()) {
-            if (file.path() == null
+            if (file == null) {
+                throw new IllegalStateException(
+                        "مدل زبانی یک فایل null تولید کرده است.");
+            }
+
+            boolean invalidPath = file.path() == null
                     || !file.path().endsWith(".java")
                     || file.path().startsWith("/")
-                    || file.path().contains("..")
-                    || file.content() == null
-                    || !file.content().contains("package ")) {
+                    || file.path().contains("..");
+
+            boolean invalidContent = file.content() == null
+                    || !file.content().contains("package ");
+
+            if (invalidPath || invalidContent) {
+                System.err.println("=== V45 INVALID GENERATED FILE ===");
+                System.err.println("path = " + file.path());
+                System.err.println("content is null = " + (file.content() == null));
+
+                if (file.content() != null) {
+                    System.err.println("content preview = "
+                            + file.content().substring(
+                            0, Math.min(500, file.content().length())));
+                }
+
                 throw new IllegalStateException(
-                        "ساختار یکی از فایل‌های تولیدشده معتبر نیست.");
+                        "ساختار فایل تولیدشده معتبر نیست؛ جزئیات در لاگ ثبت شد.");
             }
         }
 

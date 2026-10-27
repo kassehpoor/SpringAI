@@ -11,6 +11,13 @@ import spring.ai.example.spring_ai_demo.dto.legacyAnalysis.v44.DataModelProposal
 import spring.ai.example.spring_ai_demo.repository.legacyAnalysis.v38.RequirementAnalysisRepository;
 import spring.ai.example.spring_ai_demo.repository.legacyAnalysis.v44.DataModelProposalV44Repository;
 import spring.ai.example.spring_ai_demo.service.v21.OracleMetadataService;
+import spring.ai.example.spring_ai_demo.service.v12.ProjectStructureIndexService;
+import spring.ai.example.spring_ai_demo.service.v12.ProjectStructureIndexService.ClassInfo;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -24,6 +31,7 @@ public class DataModelProposalV44Service {
     private final DataModelProposalV44Repository proposalRepository;
     private final OracleMetadataService oracleMetadataService;
     private final String modelName;
+    private final ProjectStructureIndexService projectIndexService;
 
     public DataModelProposalV44Service(
             ChatClient.Builder chatClientBuilder,
@@ -32,7 +40,7 @@ public class DataModelProposalV44Service {
             DataModelProposalV44Repository proposalRepository,
             OracleMetadataService oracleMetadataService,
             @Value("${spring.ai.ollama.chat.options.model:llama3.2}")
-            String modelName) {
+            String modelName, ProjectStructureIndexService projectIndexService) {
 
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
@@ -40,6 +48,7 @@ public class DataModelProposalV44Service {
         this.proposalRepository = proposalRepository;
         this.oracleMetadataService = oracleMetadataService;
         this.modelName = modelName;
+        this.projectIndexService = projectIndexService;
     }
 
     @Transactional
@@ -124,14 +133,19 @@ public class DataModelProposalV44Service {
                 "foreignKeys", foreignKeys
         ));
 
+        List<Map<String, Object>> javaEvidence =
+                collectJavaEvidence(selectedTables);
+
+        String javaEvidenceJson = toJson(javaEvidence);
+
         String systemPrompt = """
                 تو معمار ارشد نرم‌افزار و تحلیل‌گر دیتامدل سامانه‌های
                 سازمان تأمین اجتماعی هستی.
-
+                
                 بر اساس دو ورودی زیر، دیتامدل پیشنهادی جدید طراحی کن:
                 1. تحلیل نیازمندی کسب‌وکار
                 2. متادیتای واقعی Oracle
-
+                
                 قوانین:
                 - ساختار قدیمی را کورکورانه کپی نکن.
                 - نام ستون، قانون یا رابطه‌ای را که شواهدی برایش نداری
@@ -159,9 +173,22 @@ public class DataModelProposalV44Service {
 
                 متادیتای واقعی Oracle برای جدول‌های انتخاب‌شده:
                 %s
+                شواهد استخراج‌شده از سورس Java پروژه قدیمی:
+                %s
+                
+                نحوه استفاده از شواهد:
+                - این شواهد صرفاً تطبیق متنی هستند و اثبات قطعی ارتباط نیستند.
+                - از آن‌ها برای شناخت احتمالی منطق تجاری و کاربرد جدول‌ها استفاده کن.
+                - موارد بدون شواهد کافی را در unresolvedQuestions ثبت کن.
+                - نام کلاس یا متد را بدون وجود شواهد معتبر، قطعی اعلام نکن.
 
                 یک دیتامدل جدید مناسب Spring Boot طراحی کن.
-                """.formatted(modelName, analysisJson, metadataJson);
+                """.formatted(
+                modelName,
+                analysisJson,
+                metadataJson,
+                javaEvidenceJson
+        );
 
         DataModelProposalV44DTO proposal = chatClient.prompt()
                 .system(systemPrompt)
@@ -221,4 +248,77 @@ public class DataModelProposalV44Service {
         return value == null ? "" : value.toString()
                 .toUpperCase(Locale.ROOT);
     }
+
+    private List<Map<String, Object>> collectJavaEvidence(
+            List<String> selectedTables) {
+
+        var index = projectIndexService.getCurrentIndex();
+
+        if (index == null || index.classes() == null) {
+            return List.of();
+        }
+
+        List<Map<String, Object>> evidence = new ArrayList<>();
+        Set<String> names = selectedTables.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(s -> s.toUpperCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+
+        for (ClassInfo classInfo : index.classes().values()) {
+            if (evidence.size() >= 100) {
+                break;
+            }
+
+            Path file = index.sourceDirectory()
+                    .resolve(classInfo.path())
+                    .normalize();
+
+            if (!file.startsWith(index.sourceDirectory().normalize())
+                    || !Files.isRegularFile(file)) {
+                continue;
+            }
+
+            try {
+                List<String> lines = Files.readAllLines(
+                        file, StandardCharsets.UTF_8);
+
+                for (int i = 0; i < lines.size(); i++) {
+                    String line = lines.get(i);
+
+                    boolean matched = names.stream()
+                            .anyMatch(name -> line.toUpperCase(Locale.ROOT)
+                                    .contains(name));
+
+                    if (!matched) {
+                        continue;
+                    }
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("className", classInfo.qualifiedName());
+                    item.put("file", classInfo.path());
+                    item.put("line", i + 1);
+                    item.put("source", line.trim());
+                    item.put("evidenceType", "JAVA_TEXT_MATCH");
+                    item.put("confidence", "LOW");
+                    item.put(
+                            "warning",
+                            "تطبیق متنی به‌تنهایی اثبات‌کننده ارتباط اجرایی نیست."
+                    );
+
+                    evidence.add(item);
+
+                    if (evidence.size() >= 100) {
+                        break;
+                    }
+                }
+            } catch (IOException ex) {
+                // فایل غیرقابل‌خواندن نباید کل تولید مدل را متوقف کند.
+            }
+        }
+
+        return evidence;
+    }
+
 }
