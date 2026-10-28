@@ -13,6 +13,7 @@ import spring.ai.example.spring_ai_demo.repository.legacyAnalysis.v44.DataModelP
 import spring.ai.example.spring_ai_demo.service.v21.OracleMetadataService;
 import spring.ai.example.spring_ai_demo.service.v12.ProjectStructureIndexService;
 import spring.ai.example.spring_ai_demo.service.v12.ProjectStructureIndexService.ClassInfo;
+import spring.ai.example.spring_ai_demo.service.v25.JavaOracleLinkV25Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,7 @@ public class DataModelProposalV44Service {
     private final OracleMetadataService oracleMetadataService;
     private final String modelName;
     private final ProjectStructureIndexService projectIndexService;
+    private final JavaOracleLinkV25Service javaOracleLinkV25Service;
 
     public DataModelProposalV44Service(
             ChatClient.Builder chatClientBuilder,
@@ -40,7 +42,7 @@ public class DataModelProposalV44Service {
             DataModelProposalV44Repository proposalRepository,
             OracleMetadataService oracleMetadataService,
             @Value("${spring.ai.ollama.chat.options.model:llama3.2}")
-            String modelName, ProjectStructureIndexService projectIndexService) {
+            String modelName, ProjectStructureIndexService projectIndexService, JavaOracleLinkV25Service javaOracleLinkV25Service) {
 
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
@@ -49,6 +51,7 @@ public class DataModelProposalV44Service {
         this.oracleMetadataService = oracleMetadataService;
         this.modelName = modelName;
         this.projectIndexService = projectIndexService;
+        this.javaOracleLinkV25Service = javaOracleLinkV25Service;
     }
 
     @Transactional
@@ -133,8 +136,9 @@ public class DataModelProposalV44Service {
                 "foreignKeys", foreignKeys
         ));
 
+        // V44 برای هر جدول انتخاب‌شده از تحلیل موجود V25 استفاده کند و شواهد را همراه با نام کلاس و متد به مدل زبانی بدهد.
         List<Map<String, Object>> javaEvidence =
-                collectJavaEvidence(selectedTables);
+                collectJavaEvidence(schema, selectedTables);
 
         String javaEvidenceJson = toJson(javaEvidence);
 
@@ -163,14 +167,38 @@ public class DataModelProposalV44Service {
                 - توضیحات و نام‌های نمایشی را تا حد امکان فارسی بنویس؛
                   شناسه‌های Mermaid و نام فنی فیلدها انگلیسی باشند.
                 - خروجی فقط مطابق DTO درخواستی باشد، بدون متن اضافی.
+                - هرگز از example.com، URL ساختگی یا شواهد فرضی استفاده نکن.
+                - sourceEvidence باید به شواهد واقعی ورودی اشاره کند؛
+                  مانند نام جدول، نام ستون، constraint، مسیر فایل و شماره خط.
+                - اگر برای یک ویژگی شاهد نداری، صریحاً بنویس:
+                  "بدون شاهد مستقیم؛ پیشنهاد طراحی".
+                - موجودیتی مانند Employee را صرفاً به دلیل متداول بودن
+                  در سیستم‌های بازنشستگی اضافه نکن.
+                - هر دو سر هر رابطه باید در entities تعریف شده باشند.
+                - برای هر موجودیت، شناسه Mermaid یکتا بساز.
+                - mermaidErd باید با entities و relationships هماهنگ باشد.
+                - برای جدول Oracle، نام واقعی جدول و نام واقعی ستون‌ها را
+                  در شواهد نگه دار؛ نام‌گذاری جدید را از نام Oracle جدا کن.
+                - فیلد mermaidErd باید فقط کد خام Mermaid از نوع erDiagram باشد.
+                  - داخل mermaidErd از علامت ``` یا Markdown code fence استفاده نکن.
+                  - از ساختار class استفاده نکن؛ فقط از ساختار erDiagram استفاده کن.
+                  - خروجی باید JSON معتبر و مطابق DTO باشد.
+                  - رشته‌های JSON نباید حاوی newline واقعی و escape‌نشده باشند.
+                  - برای newline داخل رشته JSON از \\n استفاده کن.
+                  - فیلد mermaidErd باید فقط کد خام Mermaid از نوع erDiagram باشد.
+                  - داخل mermaidErd از علامت ``` یا Markdown code fence استفاده نکن.
+                  - از ساختار class استفاده نکن؛ فقط از ساختار erDiagram استفاده کن.
+                  - خروجی باید JSON معتبر و مطابق DTO باشد.
+                  - رشته‌های JSON نباید حاوی newline واقعی و escape‌نشده باشند.
+                  - برای newline داخل رشته JSON از \\n استفاده کن.
                 """;
 
         String userPrompt = """
                 مدل مورد استفاده: %s
-
+                
                 تحلیل نیازمندی ذخیره‌شده:
                 %s
-
+                
                 متادیتای واقعی Oracle برای جدول‌های انتخاب‌شده:
                 %s
                 شواهد استخراج‌شده از سورس Java پروژه قدیمی:
@@ -181,7 +209,7 @@ public class DataModelProposalV44Service {
                 - از آن‌ها برای شناخت احتمالی منطق تجاری و کاربرد جدول‌ها استفاده کن.
                 - موارد بدون شواهد کافی را در unresolvedQuestions ثبت کن.
                 - نام کلاس یا متد را بدون وجود شواهد معتبر، قطعی اعلام نکن.
-
+                
                 یک دیتامدل جدید مناسب Spring Boot طراحی کن.
                 """.formatted(
                 modelName,
@@ -202,6 +230,8 @@ public class DataModelProposalV44Service {
                     "مدل هوش مصنوعی دیتامدل معتبری تولید نکرد.");
         }
 
+        validateProposal(proposal);
+
         String proposalJson = toJson(proposal);
         String tablesJson = toJson(selectedTables);
 
@@ -210,7 +240,8 @@ public class DataModelProposalV44Service {
                 schema,
                 tablesJson,
                 proposalJson,
-                proposal.mermaidErd()
+""
+//                proposal.mermaidErd()
         );
 
         return Map.of(
@@ -249,76 +280,147 @@ public class DataModelProposalV44Service {
                 .toUpperCase(Locale.ROOT);
     }
 
+
     private List<Map<String, Object>> collectJavaEvidence(
+            String schema,
             List<String> selectedTables) {
 
-        var index = projectIndexService.getCurrentIndex();
+        List<Map<String, Object>> evidence = new ArrayList<>();
 
-        if (index == null || index.classes() == null) {
-            return List.of();
+        if (selectedTables == null || selectedTables.isEmpty()) {
+            return evidence;
         }
 
-        List<Map<String, Object>> evidence = new ArrayList<>();
-        Set<String> names = selectedTables.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isBlank())
-                .map(s -> s.toUpperCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-
-        for (ClassInfo classInfo : index.classes().values()) {
-            if (evidence.size() >= 100) {
+        for (String table : selectedTables) {
+            if (evidence.size() >= 200) {
                 break;
             }
 
-            Path file = index.sourceDirectory()
-                    .resolve(classInfo.path())
-                    .normalize();
-
-            if (!file.startsWith(index.sourceDirectory().normalize())
-                    || !Files.isRegularFile(file)) {
-                continue;
-            }
-
             try {
-                List<String> lines = Files.readAllLines(
-                        file, StandardCharsets.UTF_8);
+                var linkResult =
+                        javaOracleLinkV25Service.analyze(schema, table);
 
-                for (int i = 0; i < lines.size(); i++) {
-                    String line = lines.get(i);
+                if (linkResult.matches() == null) {
+                    continue;
+                }
 
-                    boolean matched = names.stream()
-                            .anyMatch(name -> line.toUpperCase(Locale.ROOT)
-                                    .contains(name));
-
-                    if (!matched) {
-                        continue;
+                for (var match : linkResult.matches()) {
+                    if (evidence.size() >= 200) {
+                        break;
                     }
 
                     Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("className", classInfo.qualifiedName());
-                    item.put("file", classInfo.path());
-                    item.put("line", i + 1);
-                    item.put("source", line.trim());
-                    item.put("evidenceType", "JAVA_TEXT_MATCH");
+                    item.put("oracleObject", table);
+                    item.put("className", match.className());
+                    item.put("methodName", match.methodName());
+                    item.put("file", match.path());
+                    item.put("line", match.line());
+                    item.put("source", match.evidence());
+                    item.put("evidenceType", "V25_JAVA_ORACLE_TEXT_LINK");
                     item.put("confidence", "LOW");
                     item.put(
                             "warning",
-                            "تطبیق متنی به‌تنهایی اثبات‌کننده ارتباط اجرایی نیست."
+                            "تطبیق متنی نام شیء با سورس Java است؛ " +
+                                    "ارتباط اجرایی یا نگاشت قطعی اثبات نشده است."
                     );
 
                     evidence.add(item);
-
-                    if (evidence.size() >= 100) {
-                        break;
-                    }
                 }
-            } catch (IOException ex) {
-                // فایل غیرقابل‌خواندن نباید کل تولید مدل را متوقف کند.
+
+            } catch (IOException | IllegalArgumentException ex) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("oracleObject", table);
+                item.put("evidenceType", "V25_ANALYSIS_ERROR");
+                item.put("confidence", "NONE");
+                item.put("message", ex.getMessage());
+
+                evidence.add(item);
             }
         }
 
         return evidence;
     }
+
+    private void validateProposal(DataModelProposalV44DTO proposal) {
+        Set<String> entityNames = new HashSet<>();
+
+        for (var entity : proposal.entities()) {
+            if (entity == null || entity.name() == null
+                    || entity.name().isBlank()) {
+                throw new IllegalStateException(
+                        "V44: نام موجودیت خالی است.");
+            }
+
+            if (!entityNames.add(
+                    entity.name().trim().toLowerCase(Locale.ROOT))) {
+                throw new IllegalStateException(
+                        "V44: نام موجودیت تکراری است: " + entity.name());
+            }
+
+            rejectFakeEvidence(entity.sourceEvidence());
+
+            if (entity.attributes() != null) {
+                for (var attribute : entity.attributes()) {
+                    if (attribute == null || attribute.name() == null
+                            || attribute.name().isBlank()) {
+                        throw new IllegalStateException(
+                                "V44: ویژگی بدون نام در موجودیت "
+                                        + entity.name());
+                    }
+
+                    rejectFakeEvidence(attribute.sourceEvidence());
+                }
+            }
+        }
+
+        if (proposal.relationships() != null) {
+            for (var relationship : proposal.relationships()) {
+                if (relationship == null
+                        || relationship.sourceEntity() == null
+                        || relationship.targetEntity() == null) {
+                    throw new IllegalStateException(
+                            "V44: رابطه ناقص است.");
+                }
+
+                if (!entityNames.contains(
+                        relationship.sourceEntity().trim()
+                                .toLowerCase(Locale.ROOT))
+                        || !entityNames.contains(
+                        relationship.targetEntity().trim()
+                                .toLowerCase(Locale.ROOT))) {
+                    throw new IllegalStateException(
+                            "V44: رابطه به موجودیت تعریف‌نشده اشاره می‌کند: "
+                                    + relationship.sourceEntity() + " -> "
+                                    + relationship.targetEntity());
+                }
+
+                rejectFakeEvidence(relationship.sourceEvidence());
+            }
+        }
+
+//        if (proposal.mermaidErd() == null
+//                || !proposal.mermaidErd().contains("erDiagram")) {
+//            throw new IllegalStateException(
+//                    "V44: نمودار Mermaid خالی یا نامعتبر است.");
+//        }
+    }
+
+    private void rejectFakeEvidence(String evidence) {
+        if (evidence == null || evidence.isBlank()) {
+            throw new IllegalStateException(
+                    "V44: شواهد منبع خالی است.");
+        }
+
+        String normalized = evidence.toLowerCase(Locale.ROOT);
+
+        if (normalized.contains("example.com")
+                || normalized.contains("lorem ipsum")
+                || normalized.contains("placeholder")) {
+            throw new IllegalStateException(
+                    "V44: شواهد ساختگی یا placeholder شناسایی شد: "
+                            + evidence);
+        }
+    }
+
 
 }

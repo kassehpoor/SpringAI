@@ -23,6 +23,14 @@ public class DataModelProposalV44Controller {
     /**
      تولید و ذخیره مدل داده پیشنهادی
      */
+
+    /**
+     {
+     "analysisId": 5,
+     "schema": "****",
+     "tableNames": ["LSU_CANPEN", "LSU_REQ"]
+     }
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> generate(

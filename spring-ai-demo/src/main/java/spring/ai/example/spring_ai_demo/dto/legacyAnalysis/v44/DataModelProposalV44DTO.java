@@ -8,8 +8,8 @@ public record DataModelProposalV44DTO(
         List<EntityProposal> entities,
         List<RelationshipProposal> relationships,
         List<String> businessConstraints,
-        List<String> unresolvedQuestions,
-        String mermaidErd
+        List<String> unresolvedQuestions
+//        ,String mermaidErd
 ) {
     public record EntityProposal(
             String name,

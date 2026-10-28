@@ -14,6 +14,18 @@ public class OracleErdV41Controller {
         this.service = service;
     }
 
+    /**
+     این API به OracleErdV41Service وصل است. سرویس از OracleMetadataService نسخه V21 اطلاعات جدول‌ها، ستون‌ها، کلیدهای اصلی و کلیدهای خارجی را می‌گیرد و خروجی Mermaid ER Diagram می‌سازد.
+
+     در پاسخ باید فیلدهایی مشابه این‌ها ببینی:
+     - schema: نام Schema
+     - mermaid: متن نمودار با ساختار erDiagram
+     - tableCount: تعداد جدول‌های شناسایی‌شده
+     - relationshipCount: تعداد روابط استخراج‌شده
+     - status: وضعیت خروجی
+     این با مقدار "erd" که در پیشنهاد V44 فرق دارد؛ "erd" یک نمودار معتبر نیست، اما V41 برای ساخت متن واقعی Mermaid پیاده‌سازی دارد.
+     */
+
     @GetMapping
     public OracleErdV41DTO generate(@RequestParam String schema) {
         return service.generate(schema);
