@@ -191,6 +191,28 @@ public class DataModelProposalV44Service {
                   - خروجی باید JSON معتبر و مطابق DTO باشد.
                   - رشته‌های JSON نباید حاوی newline واقعی و escape‌نشده باشند.
                   - برای newline داخل رشته JSON از \\n استفاده کن.
+                 قوانین دقیق ساختار JSON:
+                 - businessConstraints حتماً باید آرایه‌ای از String باشد.
+                 - unresolvedQuestions حتماً باید آرایه‌ای از String باشد.
+                 - entities حتماً باید آرایه‌ای از EntityProposal باشد.
+                 - relationships حتماً باید آرایه‌ای از RelationshipProposal باشد.
+                 - هر AttributeProposal باید دقیقاً مطابق فیلدهای DTO تولید شود.
+                 - برای businessConstraints هرگز object شامل name و description تولید نکن.
+                 - برای هر محدودیت تجاری، یک رشته مستقل تولید کن.
+                 - خروجی باید دقیقاً با ساختار DataModelProposalV44DTO منطبق باشد.
+                 {
+                   "title": "Pension Service",
+                   "designRationale": "Design rationale",
+                   "entities": [],
+                   "relationships": [],
+                   "businessConstraints": [
+                     "Constraint 1",
+                     "Constraint 2"
+                   ],
+                   "unresolvedQuestions": [
+                     "Question 1"
+                   ]
+                 }
                 """;
 
         String userPrompt = """
@@ -408,7 +430,8 @@ public class DataModelProposalV44Service {
     private void rejectFakeEvidence(String evidence) {
         if (evidence == null || evidence.isBlank()) {
             throw new IllegalStateException(
-                    "V44: شواهد منبع خالی است.");
+                    "V44: شواهد منبع خالی است. مقدار دریافتی: ["
+                            + evidence + "]");
         }
 
         String normalized = evidence.toLowerCase(Locale.ROOT);
