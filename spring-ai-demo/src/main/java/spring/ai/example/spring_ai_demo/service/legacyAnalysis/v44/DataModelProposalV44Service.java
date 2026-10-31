@@ -2,6 +2,7 @@ package spring.ai.example.spring_ai_demo.service.legacyAnalysis.v44;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class DataModelProposalV44Service {
 
@@ -112,11 +114,43 @@ public class DataModelProposalV44Service {
                                 + table);
             }
 
+            List<Map<String, Object>> constraints =
+                    oracleMetadataService.listConstraints(schema, table);
+
+// استخراج ستون‌های Primary Key فعال از Oracle
+            Set<String> primaryKeyColumns = constraints.stream()
+                    .filter(c -> "P".equalsIgnoreCase(value(c, "CONSTRAINT_TYPE")))
+                    .filter(c -> "ENABLED".equalsIgnoreCase(value(c, "STATUS")))
+                    .map(c -> value(c, "COLUMN_NAME"))
+                    .filter(name -> !name.isBlank())
+                    .collect(Collectors.toSet());
+
+// نرمال‌سازی اطلاعات ستون‌ها
+            List<Map<String, Object>> normalizedColumns = columns.stream()
+                    .map(column -> {
+                        Map<String, Object> normalized = new LinkedHashMap<>(column);
+
+                        String nullable = value(column, "NULLABLE");
+                        String columnName = value(column, "COLUMN_NAME");
+
+                        normalized.put(
+                                "nullable",
+                                "Y".equalsIgnoreCase(nullable)
+                        );
+
+                        normalized.put(
+                                "primaryKey",
+                                primaryKeyColumns.contains(columnName)
+                        );
+
+                        return normalized;
+                    })
+                    .toList();
+
             metadata.add(Map.of(
                     "tableName", table,
-                    "columns", columns,
-                    "constraints",
-                    oracleMetadataService.listConstraints(schema, table)
+                    "columns", normalizedColumns,
+                    "constraints", constraints
             ));
         }
 
@@ -200,18 +234,99 @@ public class DataModelProposalV44Service {
                  - برای businessConstraints هرگز object شامل name و description تولید نکن.
                  - برای هر محدودیت تجاری، یک رشته مستقل تولید کن.
                  - خروجی باید دقیقاً با ساختار DataModelProposalV44DTO منطبق باشد.
+                 قوانین اجباری نوع داده در JSON:
+                
+                 - nullable باید فقط مقدار boolean واقعی JSON باشد:
+                   true یا false.
+                 - primaryKey باید فقط مقدار boolean واقعی JSON باشد:
+                   true یا false.
+                 - هرگز برای این دو فیلد از "Y"، "N"، "YES"، "NO" یا رشته استفاده نکن.
+                 - مقدار nullable از ستون NULLABLE در متادیتای Oracle استخراج شود:
+                   Y یعنی true و N یعنی false.
+                 - مقدار primaryKey فقط زمانی true است که ستون در constraint
+                   با نوع P و وضعیت ENABLED حضور داشته باشد.
+                 - constraintهای نوع U را Primary Key محسوب نکن.
+                 - برای هر AttributeProposal، sourceEvidence باید شامل نام جدول،
+                   نام ستون و اطلاعات نوع داده Oracle باشد.
+                 - sourceEvidence مربوط به EntityProposal نباید خالی باشد.
+                 - اگر اطلاعات کافی برای ایجاد یک رابطه وجود ندارد،
+                   relationships باید آرایه خالی باشد؛ رابطه ناقص نساز.
+                 - اگر اطلاعات کافی برای یک موجودیت وجود ندارد،
+                   آن را به‌صورت حدس قطعی تولید نکن.
+                 - status فقط یکی از مقادیر EVIDENCE_BASED یا PROPOSED باشد.
+                 JSON OUTPUT RULES:
+                
+                 1. Return valid JSON matching the DataModelProposalV44DTO structure exactly.
+                
+                 2. For every AttributeProposal:
+                    - nullable must be a JSON boolean: true or false.
+                    - primaryKey must be a JSON boolean: true or false.
+                    - Never use "Y", "N", "YES", "NO", "true", or "false" as strings.
+                
+                 3. Oracle NULLABLE mapping:
+                    - Y means nullable = true.
+                    - N means nullable = false.
+                
+                 4. Primary key identification:
+                    - primaryKey = true only when the column belongs to an ENABLED
+                      Oracle primary key constraint (constraint type P).
+                    - A UNIQUE constraint (type U) is not a primary key.
+                    - Disabled constraints must not be treated as active primary keys.
+                    - If no enabled primary key exists for a table, its attributes
+                      must not be marked as primary keys.
+                
+                 5. Evidence:
+                    - Every entity must have non-empty sourceEvidence.
+                    - Every attribute must have non-empty sourceEvidence.
+                    - Attribute evidence must identify the Oracle table and column.
+                    - Java JPA mapping evidence may support entity mapping,
+                      but must not be used as column-level evidence.
+                    - Never invent file paths, line numbers, table names, or evidence.
+                
+                 6. Relationships:
+                    - Create a relationship only when supported by explicit foreign-key
+                      metadata or reliable Java relationship mapping evidence.
+                    - A shared column name alone does not prove a relationship.
+                    - If no relationship is supported by evidence, return [].
+                    - Never return relationships with empty sourceEntity or targetEntity.
+                
+                 7. Status:
+                    - Use only EVIDENCE_BASED or PROPOSED.
+                    - EVIDENCE_BASED means directly supported by supplied evidence.
+                    - PROPOSED means a design suggestion that is not directly confirmed.
+                    - Do not present a proposal as an existing database fact.
+                
+                 8. Do not create generic entities such as "دیتامدل جدید".
+                    Entity names must be meaningful and grounded in the supplied evidence.
+                
+                 9. unresolvedQuestions must contain meaningful questions only.
+                    If there are no unresolved questions, return [].
+                    Never return empty strings.
                  {
-                   "title": "Pension Service",
+                   "title": "Proposed Data Model",
                    "designRationale": "Design rationale",
-                   "entities": [],
-                   "relationships": [],
-                   "businessConstraints": [
-                     "Constraint 1",
-                     "Constraint 2"
+                   "entities": [
+                     {
+                       "name": "Request",
+                       "description": "درخواست",
+                       "attributes": [
+                         {
+                           "name": "requestNumber",
+                           "dataType": "String",
+                           "nullable": false,
+                           "primaryKey": true,
+                           "description": "شماره درخواست",
+                           "sourceEvidence": "LSU_REQ.REQ_NOREQ - Oracle CHAR(13)",
+                           "status": "EVIDENCE_BASED"
+                         }
+                       ],
+                       "sourceEvidence": "Oracle table LSU_REQ; Java class Request",
+                       "status": "EVIDENCE_BASED"
+                     }
                    ],
-                   "unresolvedQuestions": [
-                     "Question 1"
-                   ]
+                   "relationships": [],
+                   "businessConstraints": [],
+                   "unresolvedQuestions": []
                  }
                 """;
 
@@ -227,10 +342,14 @@ public class DataModelProposalV44Service {
                 %s
                 
                 نحوه استفاده از شواهد:
-                - این شواهد صرفاً تطبیق متنی هستند و اثبات قطعی ارتباط نیستند.
-                - از آن‌ها برای شناخت احتمالی منطق تجاری و کاربرد جدول‌ها استفاده کن.
-                - موارد بدون شواهد کافی را در unresolvedQuestions ثبت کن.
-                - نام کلاس یا متد را بدون وجود شواهد معتبر، قطعی اعلام نکن.
+                - شواهد دارای evidenceType برابر JPA_TABLE_MAPPING
+                  نشان‌دهنده تطبیق دقیق نام جدول در annotation مربوط به JPA هستند.
+                - این شواهد فقط نگاشت کلاس Java به جدول Oracle را پشتیبانی می‌کنند.
+                - از وجود @Table به‌تنهایی، رابطه بین دو موجودیت را نتیجه‌گیری نکن.
+                - برای ایجاد رابطه، به Foreign Key یا شواهد معتبر دیگری نیاز داری.
+                - اگر برای یک جدول نگاشت JPA پیدا نشده است، آن را در
+                  unresolvedQuestions ثبت کن.
+                - هیچ کلاس یا جدولی را بر اساس شباهت بخشی از نام‌ها مرتبط نکن.
                 
                 یک دیتامدل جدید مناسب Spring Boot طراحی کن.
                 """.formatted(
@@ -239,6 +358,12 @@ public class DataModelProposalV44Service {
                 metadataJson,
                 javaEvidenceJson
         );
+
+        log.info("========== V44 INPUT DEBUG ==========");
+        log.info("ANALYSIS JSON:\n{}", analysisJson);
+        log.info("ORACLE METADATA:\n{}", metadataJson);
+        log.info("JAVA EVIDENCE:\n{}", javaEvidenceJson);
+        log.info("========== END V44 INPUT DEBUG ==========");
 
         DataModelProposalV44DTO proposal = chatClient.prompt()
                 .system(systemPrompt)
@@ -314,6 +439,7 @@ public class DataModelProposalV44Service {
         }
 
         for (String table : selectedTables) {
+
             if (evidence.size() >= 200) {
                 break;
             }
@@ -322,45 +448,104 @@ public class DataModelProposalV44Service {
                 var linkResult =
                         javaOracleLinkV25Service.analyze(schema, table);
 
-                if (linkResult.matches() == null) {
+                if (linkResult == null || linkResult.matches() == null) {
                     continue;
                 }
 
                 for (var match : linkResult.matches()) {
+
                     if (evidence.size() >= 200) {
                         break;
                     }
 
+                    String source = match.evidence();
+
+                    // فقط نگاشت مستقیم JPA را قبول می‌کنیم.
+                    if (!hasExactJpaTableMapping(source, table)) {
+                        continue;
+                    }
+
                     Map<String, Object> item = new LinkedHashMap<>();
+
                     item.put("oracleObject", table);
                     item.put("className", match.className());
                     item.put("methodName", match.methodName());
                     item.put("file", match.path());
                     item.put("line", match.line());
-                    item.put("source", match.evidence());
-                    item.put("evidenceType", "V25_JAVA_ORACLE_TEXT_LINK");
-                    item.put("confidence", "LOW");
+                    item.put("source", source);
+
+                    item.put("evidenceType", "JPA_TABLE_MAPPING");
+                    item.put("confidence", "HIGH");
+
                     item.put(
                             "warning",
-                            "تطبیق متنی نام شیء با سورس Java است؛ " +
-                                    "ارتباط اجرایی یا نگاشت قطعی اثبات نشده است."
+                            "نام جدول در annotation مربوط به JPA به‌صورت دقیق "
+                                    + "با جدول انتخاب‌شده مطابقت دارد."
                     );
 
                     evidence.add(item);
                 }
 
             } catch (IOException | IllegalArgumentException ex) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("oracleObject", table);
-                item.put("evidenceType", "V25_ANALYSIS_ERROR");
-                item.put("confidence", "NONE");
-                item.put("message", ex.getMessage());
 
-                evidence.add(item);
+                log.warn(
+                        "V44: دریافت شواهد Java برای جدول {} ناموفق بود: {}",
+                        table,
+                        ex.getMessage()
+                );
             }
         }
 
         return evidence;
+    }
+
+    private boolean hasExactJpaTableMapping(
+            String source,
+            String expectedTable) {
+
+        if (source == null || source.isBlank()
+                || expectedTable == null || expectedTable.isBlank()) {
+            return false;
+        }
+
+        // پیدا کردن annotation از نوع @Table(...)
+        java.util.regex.Pattern tableAnnotationPattern =
+                java.util.regex.Pattern.compile(
+                        "@Table\\s*\\(([^)]*)\\)",
+                        java.util.regex.Pattern.CASE_INSENSITIVE
+                );
+
+        java.util.regex.Matcher annotationMatcher =
+                tableAnnotationPattern.matcher(source);
+
+        while (annotationMatcher.find()) {
+
+            String annotationBody = annotationMatcher.group(1);
+
+            // استخراج مقدار name یا value از annotation
+            java.util.regex.Pattern namePattern =
+                    java.util.regex.Pattern.compile(
+                            "\\b(?:name|value)\\s*=\\s*[\"']([^\"']+)[\"']",
+                            java.util.regex.Pattern.CASE_INSENSITIVE
+                    );
+
+            java.util.regex.Matcher nameMatcher =
+                    namePattern.matcher(annotationBody);
+
+            while (nameMatcher.find()) {
+
+                String actualTable = nameMatcher.group(1)
+                        .trim()
+                        .toUpperCase(Locale.ROOT);
+
+                if (actualTable.equals(
+                        expectedTable.trim().toUpperCase(Locale.ROOT))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void validateProposal(DataModelProposalV44DTO proposal) {
